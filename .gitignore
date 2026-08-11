@@ -1,5 +1,6 @@
 *.iml
 .gradle/
+.kotlin/
 /local.properties
 /.idea/
 /build/
@@ -8,7 +9,7 @@
 .cxx/
 app/build/
 /qa-assets/
-/.tmp-*/
+/.tmp-*
 /livetracks-*.png
 /*.png
 /assets/brand/*-source.png

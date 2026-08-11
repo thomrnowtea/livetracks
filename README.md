@@ -20,6 +20,7 @@ LiveTracks es una consola multipista para Android pensada para preparar y reprod
 - Salida `Single Mix` o `Stereo Split`, donde MAIN y MONITOR pueden separarse en los canales físicos izquierdo y derecho.
 - Interfaz adaptativa para portrait y landscape, disponible en español e inglés.
 - Ajustes generales, defaults de importación, información de hardware y créditos dentro de la aplicación.
+- Actualizador integrado para releases oficiales: consulta automática o manual, canal estable/pre-release configurable, descarga reanudable, validación SHA-256, identidad de paquete y certificado antes de abrir el instalador de Android.
 
 ## Flujo de trabajo
 
@@ -41,7 +42,7 @@ Formatos nativos: RIFF WAV mono o estéreo, PCM de 8/16/24/32 bits o float32. Lo
 
 ## Instalación
 
-Mientras LiveTracks no se distribuya por Play Store, las instalaciones oficiales dependen de [GitHub Releases](https://github.com/thomrnowtea/livetracks/releases). Descarga `LiveTracks.apk` y compara su checksum con `LiveTracks.apk.sha256`. Android puede pedir autorización para instalar desde el navegador o administrador de archivos utilizado.
+Mientras LiveTracks no se distribuya por Play Store, las instalaciones oficiales dependen de [GitHub Releases](https://github.com/thomrnowtea/livetracks/releases). La app puede buscar, descargar, verificar y entregar una nueva versión al instalador de Android desde Ajustes > Acerca de. La primera vez, Android puede pedir permiso para usar LiveTracks como fuente de instalación; la confirmación final nunca es silenciosa. También se puede descargar `LiveTracks.apk` manualmente y comparar su checksum con `LiveTracks.apk.sha256`.
 
 No instales como release de escenario un APK cuyo hardware y archivos reales no hayan sido probados. El estado verificable y las limitaciones vigentes están en [docs/STATUS.md](docs/STATUS.md) y [docs/HARDWARE_COMPATIBILITY.md](docs/HARDWARE_COMPATIBILITY.md).
 

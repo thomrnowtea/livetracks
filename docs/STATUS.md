@@ -11,6 +11,7 @@ Last updated: 2026-08-11
 - Adaptive Settings workspace with persisted Spanish/English selection, screen-awake and confirmation controls, configurable new-stem defaults, version details, and credits.
 - Original fader/waveform brand mark, Source Sans 3 typography, and restrained DAW graphite/steel visual system.
 - GitHub Actions verification on pushes/PRs and tag-driven, consistently signed APK releases with checksums.
+- In-app GitHub Releases updater with automatic/manual checks, stable/pre-release preference, resumable system downloads, SHA-256/package/signing-certificate validation, and explicit Android installer permission/confirmation.
 - Project and playlist-item create/rename/delete/reorder, SAF multi-file stem selection, persisted URI access, empty stems with explicit duration, stem removal, and MUSIC/CLICK/CUE classification.
 - Native decoding for mono/stereo RIFF WAV in PCM 8/16/24/32-bit or float32. Imported tracks mix from one absolute output-frame position with linear sample-rate adaptation.
 - Horizontally scrollable channel bank with large console-style vertical faders, rotary pan knobs, mute/solo, MAIN/MONITOR sends, and real callback meters. Landscape exposes about three channels; portrait exposes one to two without shrinking controls.
@@ -38,4 +39,4 @@ Last updated: 2026-08-11
 
 ## How to test
 
-Install the APK, create/select a project, add a playlist item, open Track, and choose PCM WAV stems. Drag a region in Timeline and confirm the total duration changes. Open Mix Console and press Play; confirm the delayed stem enters at its marker, meters/faders/mute/solo affect real audio, and click remains absent from MAIN. Configure project defaults and per-item overrides only from Master. Physical routing and long-file stability remain unverified until results are recorded in `docs/HARDWARE_COMPATIBILITY.md`.
+Install the APK, create/select a project, add a playlist item, open Track, and choose PCM WAV stems. Drag a region in Timeline and confirm the total duration changes. Open Mix Console and press Play; confirm the delayed stem enters at its marker, meters/faders/mute/solo affect real audio, and click remains absent from MAIN. Configure project defaults and per-item overrides only from Master. In Settings > About, verify both update channels, download an official newer signed build, reject an altered checksum/package/signature, authorize LiveTracks as an install source, and confirm Android still requires installation approval. Physical routing, long-file stability, and the signed updater path remain unverified until results are recorded on physical hardware.

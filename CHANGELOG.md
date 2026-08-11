@@ -14,6 +14,7 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 - GitHub CI and tag-driven, consistently signed APK releases with SHA-256 checksums and stable download metadata.
 - Real WAV waveform envelopes, millisecond Timeline zoom, a draggable global playhead, clip snapping, and non-destructive stem splitting.
 - Original SVG icon source sheet and Android vector exports for navigation, editing, transport, and mixer controls.
+- In-app release updater with stable/pre-release channels, resumable downloads, SHA-256/package/signature checks, and explicit Android installation approval.
 
 ### Changed
 

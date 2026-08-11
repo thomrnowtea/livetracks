@@ -48,6 +48,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -103,13 +104,17 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
 import com.thomrnowtea.livetracks.domain.MasterTrack
+import com.thomrnowtea.livetracks.domain.AppUpdateStatus
 import com.thomrnowtea.livetracks.domain.MetronomeSettings
 import com.thomrnowtea.livetracks.domain.Project
 import com.thomrnowtea.livetracks.domain.SafetyStatus
 import com.thomrnowtea.livetracks.domain.TIMELINE_SAMPLE_RATE
 import com.thomrnowtea.livetracks.domain.TrackType
+import com.thomrnowtea.livetracks.domain.UpdateFailure
 import com.thomrnowtea.livetracks.data.AppLanguage
 import kotlin.math.PI
 import kotlin.math.abs
@@ -183,6 +188,7 @@ private val ConsoleColors = darkColorScheme(
 @Composable
 fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshInstallPermission() }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { viewModel.importTracks(it) }
     val view = LocalView.current
     SideEffect { view.keepScreenOn = state.settings.keepScreenAwake }
@@ -1301,7 +1307,7 @@ private fun SettingsScreen(state: MainUiState, vm: MainViewModel) {
                     when (section) {
                         SettingsSection.GENERAL -> GeneralSettings(state, vm)
                         SettingsSection.STEMS -> StemSettings(state, vm)
-                        SettingsSection.ABOUT -> AboutSettings()
+                        SettingsSection.ABOUT -> AboutSettings(state, vm)
                     }
                 }
             }
@@ -1331,6 +1337,18 @@ private fun GeneralSettings(state: MainUiState, vm: MainViewModel) {
         tr("Solicita confirmación antes de quitar proyectos o pistas.", "Asks before removing projects or playlist tracks."),
         state.settings.confirmDestructiveActions,
         vm::setConfirmDestructiveActions,
+    )
+    SettingsToggle(
+        tr("Buscar actualizaciones automáticamente", "Check for updates automatically"),
+        tr("Consulta GitHub al iniciar sin descargar ni instalar nada.", "Checks GitHub at startup without downloading or installing anything."),
+        state.settings.automaticUpdateChecks,
+        vm::setAutomaticUpdateChecks,
+    )
+    SettingsToggle(
+        tr("Incluir versiones alpha y beta", "Include alpha and beta releases"),
+        tr("Recomendado mientras LiveTracks está en pruebas.", "Recommended while LiveTracks is being tested."),
+        state.settings.includePrereleaseUpdates,
+        vm::setIncludePrereleaseUpdates,
     )
 }
 
@@ -1364,13 +1382,8 @@ private fun StemSettings(state: MainUiState, vm: MainViewModel) {
 }
 
 @Composable
-@Suppress("DEPRECATION")
-private fun AboutSettings() {
+private fun AboutSettings(state: MainUiState, vm: MainViewModel) {
     val uriHandler = LocalUriHandler.current
-    val context = LocalContext.current
-    val installedVersion = remember(context) {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "—"
-    }
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Surface(Modifier.size(84.dp), color = Raised, shape = RoundedCornerShape(2.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Border)) {
             Image(painterResource(R.drawable.ic_brand_mark), contentDescription = "LiveTracks", modifier = Modifier.padding(12.dp))
@@ -1378,16 +1391,16 @@ private fun AboutSettings() {
         Spacer(Modifier.width(16.dp))
         Column {
             Text("LiveTracks", fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            Text("v$installedVersion", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+            Text("v${BuildConfig.VERSION_NAME} · ${BuildConfig.VERSION_CODE}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
             Text(tr("Consola multipista para vivo", "Multitrack live console"), color = Mint, fontSize = 11.sp)
         }
     }
-    Button(
-        onClick = { uriHandler.openUri("https://github.com/thomrnowtea/livetracks/releases/latest") },
+    AppUpdateCard(state.appUpdateStatus, vm)
+    OutlinedButton(
+        onClick = { uriHandler.openUri("https://github.com/thomrnowtea/livetracks/releases") },
         modifier = Modifier.fillMaxWidth().height(44.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Bg),
-        shape = RoundedCornerShape(2.dp),
-    ) { Text(tr("VER ÚLTIMA RELEASE", "OPEN LATEST RELEASE"), fontSize = 10.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); VectorIcon(R.drawable.ic_ui_external_link, null, Bg, Modifier.size(19.dp)) }
+        shape = RoundedCornerShape(8.dp),
+    ) { Text(tr("HISTORIAL DE RELEASES", "RELEASE HISTORY"), fontSize = 10.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.width(8.dp)); VectorIcon(R.drawable.ic_ui_external_link, null, TextMain, Modifier.size(19.dp)) }
     SettingsBlock {
         AboutLinkLine(tr("CRÉDITOS", "CREDITS"), "thomrnowtea") { uriHandler.openUri("https://github.com/thomrnowtea/livetracks") }
         HorizontalDivider(color = Border)
@@ -1398,6 +1411,125 @@ private fun AboutSettings() {
         AboutLine(tr("ALMACENAMIENTO", "STORAGE"), tr("Local y versionado", "Local and versioned"))
     }
     SettingsNotice(tr("El ruteo físico y la estabilidad de shows largos deben validarse con el hardware de escenario antes de uso profesional.", "Physical routing and long-show stability must be validated with the stage hardware before professional use."))
+}
+
+@Composable
+private fun AppUpdateCard(status: AppUpdateStatus, vm: MainViewModel) {
+    val accent = when (status) {
+        is AppUpdateStatus.Available, is AppUpdateStatus.ReadyToInstall -> Mint
+        is AppUpdateStatus.InstallPermissionRequired -> Amber
+        is AppUpdateStatus.Failed -> if (status.failure == UpdateFailure.NO_RELEASE) TextMuted else Amber
+        else -> TextMuted
+    }
+    val title = when (status) {
+        AppUpdateStatus.Idle -> tr("Actualizaciones", "Software updates")
+        AppUpdateStatus.Checking -> tr("Buscando actualizaciones", "Checking for updates")
+        is AppUpdateStatus.UpToDate -> tr("LiveTracks está actualizado", "LiveTracks is up to date")
+        is AppUpdateStatus.Available -> tr("Actualización disponible", "Update available")
+        is AppUpdateStatus.Downloading -> tr("Descargando actualización", "Downloading update")
+        is AppUpdateStatus.Verifying -> tr("Verificando APK", "Verifying APK")
+        is AppUpdateStatus.ReadyToInstall -> tr("Actualización verificada", "Verified update")
+        is AppUpdateStatus.InstallPermissionRequired -> tr("Falta autorizar instalaciones", "Install permission required")
+        is AppUpdateStatus.InstallerOpened -> tr("Instalador abierto", "Installer opened")
+        is AppUpdateStatus.Failed -> if (status.failure == UpdateFailure.NO_RELEASE) {
+            tr("Sin releases disponibles", "No releases available")
+        } else {
+            tr("No se pudo actualizar", "Update could not be completed")
+        }
+    }
+    val detail = when (status) {
+        AppUpdateStatus.Idle -> tr("Comprueba GitHub manualmente cuando quieras.", "Check GitHub manually whenever you want.")
+        AppUpdateStatus.Checking -> tr("Consultando releases oficiales…", "Checking official releases…")
+        is AppUpdateStatus.UpToDate -> tr("Versión instalada: ${status.installedVersion}", "Installed version: ${status.installedVersion}")
+        is AppUpdateStatus.Available -> tr("${status.release.version} está lista para descargar.", "${status.release.version} is ready to download.")
+        is AppUpdateStatus.Downloading -> formatDownloadProgress(status.downloadedBytes, status.totalBytes)
+        is AppUpdateStatus.Verifying -> tr("Validando SHA-256, paquete y certificado.", "Validating SHA-256, package, and certificate.")
+        is AppUpdateStatus.ReadyToInstall -> tr("${status.release.version} superó todas las validaciones.", "${status.release.version} passed every validation.")
+        is AppUpdateStatus.InstallPermissionRequired -> tr("Android necesita que habilites LiveTracks como fuente de instalación.", "Android needs you to allow LiveTracks as an install source.")
+        is AppUpdateStatus.InstallerOpened -> tr("Confirma la actualización en el instalador de Android.", "Confirm the update in Android's package installer.")
+        is AppUpdateStatus.Failed -> updateFailureMessage(status.failure)
+    }
+    SettingsBlock {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            VectorIcon(
+                if (status is AppUpdateStatus.ReadyToInstall || status is AppUpdateStatus.UpToDate) R.drawable.ic_ui_verified else R.drawable.ic_ui_refresh,
+                null,
+                accent,
+                Modifier.size(28.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(detail, color = TextMuted, fontSize = 10.sp)
+            }
+        }
+        when (status) {
+            AppUpdateStatus.Checking, is AppUpdateStatus.Verifying -> {
+                Spacer(Modifier.height(12.dp))
+                LinearProgressIndicator(Modifier.fillMaxWidth(), color = Mint, trackColor = Border)
+            }
+            is AppUpdateStatus.Downloading -> {
+                Spacer(Modifier.height(12.dp))
+                status.progress?.let { progress ->
+                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = Mint, trackColor = Border)
+                } ?: LinearProgressIndicator(Modifier.fillMaxWidth(), color = Mint, trackColor = Border)
+            }
+            else -> Unit
+        }
+        Spacer(Modifier.height(12.dp))
+        when (status) {
+            AppUpdateStatus.Idle, is AppUpdateStatus.UpToDate -> UpdateActionButton(R.drawable.ic_ui_refresh, tr("BUSCAR ACTUALIZACIONES", "CHECK FOR UPDATES")) { vm.checkForUpdates() }
+            is AppUpdateStatus.Available -> UpdateActionButton(R.drawable.ic_ui_download, tr("DESCARGAR Y VERIFICAR", "DOWNLOAD AND VERIFY"), vm::downloadUpdate)
+            is AppUpdateStatus.ReadyToInstall -> UpdateActionButton(R.drawable.ic_ui_install, tr("INSTALAR ACTUALIZACIÓN", "INSTALL UPDATE"), vm::installUpdate)
+            is AppUpdateStatus.InstallPermissionRequired -> UpdateActionButton(R.drawable.ic_ui_settings, tr("HABILITAR INSTALACIONES", "ALLOW INSTALLS"), vm::openInstallPermissionSettings)
+            is AppUpdateStatus.InstallerOpened -> UpdateActionButton(R.drawable.ic_ui_install, tr("ABRIR INSTALADOR OTRA VEZ", "OPEN INSTALLER AGAIN"), vm::installUpdate)
+            is AppUpdateStatus.Failed -> {
+                val retryDownload = status.release != null && status.failure in setOf(UpdateFailure.DOWNLOAD, UpdateFailure.CHECKSUM)
+                UpdateActionButton(
+                    if (retryDownload) R.drawable.ic_ui_download else R.drawable.ic_ui_refresh,
+                    if (retryDownload) tr("REINTENTAR DESCARGA", "RETRY DOWNLOAD") else tr("VOLVER A COMPROBAR", "CHECK AGAIN"),
+                    if (retryDownload) vm::downloadUpdate else ({ vm.checkForUpdates() }),
+                )
+            }
+            AppUpdateStatus.Checking, is AppUpdateStatus.Downloading, is AppUpdateStatus.Verifying -> Unit
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(tr("La instalación nunca es silenciosa: Android siempre pide confirmación.", "Installation is never silent: Android always asks for confirmation."), color = TextMuted, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun UpdateActionButton(iconRes: Int, label: String, click: () -> Unit) {
+    Button(
+        onClick = click,
+        modifier = Modifier.fillMaxWidth().height(44.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Bg),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        VectorIcon(iconRes, null, Bg, Modifier.size(21.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun updateFailureMessage(failure: UpdateFailure): String = when (failure) {
+    UpdateFailure.NETWORK -> tr("No se pudo conectar con GitHub.", "Could not connect to GitHub.")
+    UpdateFailure.RATE_LIMITED -> tr("GitHub limitó temporalmente las consultas.", "GitHub temporarily rate-limited checks.")
+    UpdateFailure.NO_RELEASE -> tr("Todavía no hay releases publicadas en este canal.", "No releases are published in this channel yet.")
+    UpdateFailure.INVALID_METADATA -> tr("La metadata de la release no es confiable.", "Release metadata is not trusted.")
+    UpdateFailure.DOWNLOAD -> tr("La descarga no pudo completarse.", "The download could not be completed.")
+    UpdateFailure.CHECKSUM -> tr("El SHA-256 descargado no coincide.", "The downloaded SHA-256 does not match.")
+    UpdateFailure.INVALID_PACKAGE -> tr("El APK no corresponde a esta versión de LiveTracks.", "The APK does not match this LiveTracks release.")
+    UpdateFailure.SIGNATURE -> tr("La firma del APK no coincide con la aplicación instalada.", "The APK signature does not match the installed app.")
+    UpdateFailure.INSTALLER_UNAVAILABLE -> tr("Android no pudo abrir el instalador.", "Android could not open the package installer.")
+    UpdateFailure.UNKNOWN -> tr("Ocurrió un error inesperado.", "An unexpected error occurred.")
+}
+
+private fun formatDownloadProgress(downloaded: Long, total: Long?): String {
+    val downloadedMb = downloaded / (1024.0 * 1024.0)
+    return total?.let { "%.1f / %.1f MB".format(downloadedMb, it / (1024.0 * 1024.0)) }
+        ?: "%.1f MB".format(downloadedMb)
 }
 
 @Composable

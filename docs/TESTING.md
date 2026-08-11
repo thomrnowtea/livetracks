@@ -9,11 +9,13 @@ $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 ./gradlew assembleDebug
 ```
 
-Unit tests cover decibel conversion, pan-law endpoints/center, MAIN downmix headroom, click/cue routing defaults, duration selection, safe metronome defaults, schema migration/rejection, versioned persistence, non-destructive splits, and real PCM waveform analysis. A successful build verifies Kotlin/JNI/CMake linkage; it does not verify audible output.
+Unit tests cover decibel conversion, pan-law endpoints/center, MAIN downmix headroom, click/cue routing defaults, duration selection, safe metronome defaults, schema migration/rejection, versioned persistence, non-destructive splits, real PCM waveform analysis, and update version-code policy. A successful build verifies Kotlin/JNI/CMake linkage; it does not verify audible output.
 
 ## Emulator
 
 Use an API 31 or newer emulator for navigation, state restoration, persistence, route-state UI, system-picker imports, and real-WAV smoke tests. Emulator audio does not validate latency, USB routing, multichannel output, drift, or long-run stability.
+
+For the signed updater path, start from an older release-signed APK. Test stable and pre-release filtering, interrupted-download recovery, a valid upgrade, and deliberately altered metadata/checksum/package/signature. A debug APK has a different certificate and must reject a release APK; that rejection is expected, not an updater failure.
 
 ## Physical sequence
 

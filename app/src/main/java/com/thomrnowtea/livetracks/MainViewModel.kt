@@ -18,6 +18,12 @@ import com.thomrnowtea.livetracks.data.ProjectRepository
 import com.thomrnowtea.livetracks.data.AppLanguage
 import com.thomrnowtea.livetracks.data.AppSettings
 import com.thomrnowtea.livetracks.data.AppSettingsRepository
+import com.thomrnowtea.livetracks.data.AppUpdateInstaller
+import com.thomrnowtea.livetracks.data.GitHubAppReleaseRepository
+import com.thomrnowtea.livetracks.data.UpdateInstallException
+import com.thomrnowtea.livetracks.data.UpdateRepositoryException
+import com.thomrnowtea.livetracks.data.isNewerRelease
+import com.thomrnowtea.livetracks.domain.AppUpdateStatus
 import com.thomrnowtea.livetracks.domain.AudioMath
 import com.thomrnowtea.livetracks.domain.MasterTrack
 import com.thomrnowtea.livetracks.domain.MetronomeSettings
@@ -28,6 +34,7 @@ import com.thomrnowtea.livetracks.domain.SourceMetadata
 import com.thomrnowtea.livetracks.domain.TIMELINE_SAMPLE_RATE
 import com.thomrnowtea.livetracks.domain.Track
 import com.thomrnowtea.livetracks.domain.TrackType
+import com.thomrnowtea.livetracks.domain.UpdateFailure
 import java.util.ArrayDeque
 import java.io.FileInputStream
 import java.util.UUID
@@ -82,6 +89,7 @@ data class MainUiState(
     val openingOutput: Boolean = false,
     val loading: Boolean = true,
     val settings: AppSettings = AppSettings(),
+    val appUpdateStatus: AppUpdateStatus = AppUpdateStatus.Idle,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -94,6 +102,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ProjectRepository = (application as LiveTracksApplication).projectRepository
     private val settingsRepository: AppSettingsRepository = (application as LiveTracksApplication).settingsRepository
+    private val releaseRepository = GitHubAppReleaseRepository("LiveTracks/${BuildConfig.VERSION_NAME}")
+    private val updateInstaller = AppUpdateInstaller(application)
     private val resolver = application.contentResolver
     private val androidAudioDecoder = AndroidAudioDecoder(resolver, java.io.File(application.cacheDir, "decoded_audio"))
     private val audio = NativeAudioController()
@@ -102,6 +112,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var previousDeviceIds: Set<Int>? = null
     private var loadedSelectionKey: String? = null
     private var saveJob: Job? = null
+    private var updateJob: Job? = null
     private val analysisCache = ConcurrentHashMap<String, WavAnalysis>()
     private val undoTimelineEdits = ArrayDeque<TimelineEditSnapshot>()
     private val redoTimelineEdits = ArrayDeque<TimelineEditSnapshot>()
@@ -128,6 +139,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             analyzeTracks(master)
         }
+        if (_state.value.settings.automaticUpdateChecks) checkForUpdates(manual = false)
         viewModelScope.launch {
             while (isActive) {
                 if (_state.value.diagnostics.outputOpen) {
@@ -520,6 +532,133 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setDefaultStemType(value: TrackType) = updateSettings { it.copy(defaultStemType = value) }
     fun setDefaultMonitorSendDb(value: Float) = updateSettings { it.copy(defaultMonitorSendDb = value.coerceIn(-60f, 0f)) }
     fun setOpenTimelineAfterImport(value: Boolean) = updateSettings { it.copy(openTimelineAfterImport = value) }
+    fun setAutomaticUpdateChecks(value: Boolean) = updateSettings { it.copy(automaticUpdateChecks = value) }
+    fun setIncludePrereleaseUpdates(value: Boolean) {
+        updateSettings { it.copy(includePrereleaseUpdates = value) }
+        checkForUpdates(manual = true)
+    }
+
+    fun checkForUpdates(manual: Boolean = true) {
+        if (updateJob?.isActive == true) return
+        _state.update { it.copy(appUpdateStatus = AppUpdateStatus.Checking) }
+        updateJob = viewModelScope.launch {
+            try {
+                val release = releaseRepository.latest(_state.value.settings.includePrereleaseUpdates)
+                val status = when {
+                    release == null && manual -> AppUpdateStatus.Failed(UpdateFailure.NO_RELEASE)
+                    release == null -> AppUpdateStatus.Idle
+                    isNewerRelease(BuildConfig.VERSION_CODE.toLong(), release) -> AppUpdateStatus.Available(release)
+                    else -> AppUpdateStatus.UpToDate(BuildConfig.VERSION_NAME)
+                }
+                _state.update { it.copy(appUpdateStatus = status) }
+            } catch (failure: UpdateRepositoryException) {
+                if (manual) {
+                    _state.update {
+                        it.copy(appUpdateStatus = AppUpdateStatus.Failed(failure.failure, failure.message))
+                    }
+                } else {
+                    _state.update { it.copy(appUpdateStatus = AppUpdateStatus.Idle) }
+                }
+            } catch (failure: Exception) {
+                if (manual) {
+                    _state.update {
+                        it.copy(appUpdateStatus = AppUpdateStatus.Failed(UpdateFailure.UNKNOWN, failure.message))
+                    }
+                } else {
+                    _state.update { it.copy(appUpdateStatus = AppUpdateStatus.Idle) }
+                }
+            }
+        }
+    }
+
+    fun downloadUpdate() {
+        if (updateJob?.isActive == true) return
+        val release = when (val status = _state.value.appUpdateStatus) {
+            is AppUpdateStatus.Available -> status.release
+            is AppUpdateStatus.Failed -> status.release
+            else -> null
+        } ?: return
+        updateJob = viewModelScope.launch {
+            try {
+                _state.update {
+                    it.copy(appUpdateStatus = AppUpdateStatus.Downloading(release, null, 0, null))
+                }
+                val file = updateInstaller.download(release) { progress ->
+                    _state.update {
+                        it.copy(
+                            appUpdateStatus = AppUpdateStatus.Downloading(
+                                release = release,
+                                progress = progress.fraction,
+                                downloadedBytes = progress.downloadedBytes,
+                                totalBytes = progress.totalBytes,
+                            ),
+                        )
+                    }
+                }
+                _state.update { it.copy(appUpdateStatus = AppUpdateStatus.Verifying(release)) }
+                updateInstaller.validate(file, release)
+                _state.update { it.copy(appUpdateStatus = AppUpdateStatus.ReadyToInstall(release)) }
+            } catch (failure: UpdateInstallException) {
+                _state.update {
+                    it.copy(appUpdateStatus = AppUpdateStatus.Failed(failure.failure, failure.message, release))
+                }
+            } catch (failure: Exception) {
+                _state.update {
+                    it.copy(appUpdateStatus = AppUpdateStatus.Failed(UpdateFailure.UNKNOWN, failure.message, release))
+                }
+            }
+        }
+    }
+
+    fun installUpdate() {
+        val release = when (val status = _state.value.appUpdateStatus) {
+            is AppUpdateStatus.ReadyToInstall -> status.release
+            is AppUpdateStatus.InstallPermissionRequired -> status.release
+            is AppUpdateStatus.InstallerOpened -> status.release
+            else -> null
+        } ?: return
+        if (!updateInstaller.canRequestInstalls()) {
+            _state.update { it.copy(appUpdateStatus = AppUpdateStatus.InstallPermissionRequired(release)) }
+            return
+        }
+        runCatching { updateInstaller.openInstaller(release) }
+            .onSuccess { _state.update { it.copy(appUpdateStatus = AppUpdateStatus.InstallerOpened(release)) } }
+            .onFailure { failure ->
+                val typed = failure as? UpdateInstallException
+                _state.update {
+                    it.copy(
+                        appUpdateStatus = AppUpdateStatus.Failed(
+                            typed?.failure ?: UpdateFailure.INSTALLER_UNAVAILABLE,
+                            failure.message,
+                            release,
+                        ),
+                    )
+                }
+            }
+    }
+
+    fun openInstallPermissionSettings() {
+        val release = (_state.value.appUpdateStatus as? AppUpdateStatus.InstallPermissionRequired)?.release ?: return
+        runCatching { updateInstaller.openInstallPermissionSettings() }.onFailure { failure ->
+            val typed = failure as? UpdateInstallException
+            _state.update {
+                it.copy(
+                    appUpdateStatus = AppUpdateStatus.Failed(
+                        typed?.failure ?: UpdateFailure.INSTALLER_UNAVAILABLE,
+                        failure.message,
+                        release,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun refreshInstallPermission() {
+        val release = (_state.value.appUpdateStatus as? AppUpdateStatus.InstallPermissionRequired)?.release ?: return
+        if (updateInstaller.canRequestInstalls()) {
+            _state.update { it.copy(appUpdateStatus = AppUpdateStatus.ReadyToInstall(release)) }
+        }
+    }
 
     fun setMasterUsesDefault(useDefault: Boolean) {
         val project = selectedProject() ?: return
