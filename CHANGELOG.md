@@ -4,6 +4,8 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## [0.1.0-alpha.1] - 2026-08-11
+
 ### Added
 
 - Adaptive Projects, Playlist, Timeline, Mix Console, Master, and Settings workspaces.

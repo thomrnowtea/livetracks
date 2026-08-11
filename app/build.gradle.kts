@@ -14,7 +14,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 1
-        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.1.0-dev"
+        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.1.0-alpha.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -31,6 +31,7 @@ android {
     signingConfigs {
         create("release") {
             providers.environmentVariable("RELEASE_STORE_FILE").orNull?.let { storeFile = file(it) }
+            storeType = providers.environmentVariable("RELEASE_STORE_TYPE").orNull ?: "PKCS12"
             storePassword = providers.environmentVariable("RELEASE_STORE_PASSWORD").orNull
             keyAlias = providers.environmentVariable("RELEASE_KEY_ALIAS").orNull
             keyPassword = providers.environmentVariable("RELEASE_KEY_PASSWORD").orNull
