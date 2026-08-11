@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LiveTracks" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">@font/source_sans_3_regular</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">#151617</item>
+        <item name="android:statusBarColor">#151617</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

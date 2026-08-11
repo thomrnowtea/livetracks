@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a stage-workflow improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Live workflow
+      description: Describe the real show situation and current friction.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Audio and routing safety impact
+

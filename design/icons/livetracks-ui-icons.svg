@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 240 120" fill="none" stroke="#dfe1e3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Canonical SVG source sheet. Android VectorDrawable exports live in app/src/main/res/drawable. -->
+  <g id="projects" transform="translate(0 0)"><path d="M3.5 6.5H9l2 2h9.5v10h-17z"/></g>
+  <g id="playlist" transform="translate(24 0)"><path d="M5 6h1m4 0h10M5 12h1m4 0h10M5 18h1m4 0h10"/></g>
+  <g id="track" transform="translate(48 0)"><path d="M3 12h2m1.5-4v8m3-11v14m3-11v8m3-9.5v11m3-8v5M20 12h1"/></g>
+  <g id="master" transform="translate(72 0)"><path d="M6 4v16m6-16v16m6-16v16M3.5 9h5m1 6h5m1-7h5"/></g>
+  <g id="settings" transform="translate(96 0)"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2m0 13v2M3.5 12h2m13 0h2M6 6l1.5 1.5m9 9L18 18M18 6l-1.5 1.5m-9 9L6 18"/></g>
+  <g id="add" transform="translate(120 0)"><path d="M12 5v14M5 12h14" stroke-width="2.2"/></g>
+  <g id="timeline" transform="translate(144 0)"><path d="M3 6h18M3 12h18M3 18h18M9 3v18M4 4h4v4H4zm6 6h7v4h-7zm-4 6h9v4H6z"/></g>
+  <g id="mixer" transform="translate(168 0)"><path d="M6 3v18m6-18v18m6-18v18M3.5 8h5m1 8h5m1-6h5"/></g>
+  <g id="split" transform="translate(192 0)"><circle cx="6" cy="7" r="3"/><circle cx="6" cy="17" r="3"/><path d="m8.5 8.5 11.5 9.5M8.5 15.5 20 6M12 12h2"/></g>
+  <g id="delete" transform="translate(216 0)"><path d="M5 7h14M9 4h6M7 7l1 13h8l1-13m-7 3 .5 7m3.5-7-.5 7"/></g>
+  <g id="undo" transform="translate(0 24)"><path d="m9 7-5 5 5 5m-4-5h9a6 6 0 0 1 6 6" stroke-width="2"/></g>
+  <g id="redo" transform="translate(24 24)"><path d="m15 7 5 5-5 5m4-5h-9a6 6 0 0 0-6 6" stroke-width="2"/></g>
+  <g id="zoom-in" transform="translate(48 24)"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5.5 5.5M7.5 10.5h6m-3-3v6"/></g>
+  <g id="zoom-out" transform="translate(72 24)"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5.5 5.5M7.5 10.5h6"/></g>
+  <g id="play" transform="translate(96 24)" fill="#dfe1e3" stroke="none"><path d="m8 5 11 7-11 7z"/></g>
+  <g id="pause" transform="translate(120 24)" fill="#dfe1e3" stroke="none"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></g>
+  <g id="stop" transform="translate(144 24)" fill="#dfe1e3" stroke="none"><path d="M6 6h12v12H6z"/></g>
+  <g id="arrow-up" transform="translate(168 24)"><path d="m6 14 6-6 6 6" stroke-width="2.2"/></g>
+  <g id="arrow-down" transform="translate(192 24)"><path d="m6 10 6 6 6-6" stroke-width="2.2"/></g>
+  <g id="metronome" transform="translate(216 24)"><path d="M8 4h8l4 16H4zm4 3-3 9m-2 0h10"/></g>
+  <g id="routing" transform="translate(0 48)"><path d="M4 7h13m-3-3 4 3-4 3m6 7H7m3-3-4 3 4 3" stroke-width="2"/></g>
+  <g id="check" transform="translate(24 48)"><path d="m5 12.5 5 4.5 9-10" stroke-width="2.4"/></g>
+  <g id="remove" transform="translate(48 48)"><path d="M5 12h14" stroke-width="2.2"/></g>
+  <g id="external-link" transform="translate(72 48)"><path d="M13 5h6v6m0-6-9 9m7-1v6H5V7h6"/></g>
+</svg>
