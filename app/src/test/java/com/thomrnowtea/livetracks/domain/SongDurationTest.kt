@@ -100,4 +100,14 @@ class SongDurationTest {
         assertEquals(12_000L, compoundTime.beatDurationFrames())
         assertEquals(72_000L, compoundTime.barDurationFrames())
     }
+
+    @Test
+    fun `custom tempo and non preset meter remain valid`() {
+        val custom = MetronomeSettings(enabled = true, bpm = 137.5, numerator = 7, denominator = 10)
+
+        assertEquals(137.5, custom.bpm, 0.0)
+        assertEquals(7, custom.numerator)
+        assertEquals(10, custom.denominator)
+        assertEquals(60.0 / 137.5 * 4.0 / 10.0, custom.beatDurationSeconds(), 0.000001)
+    }
 }

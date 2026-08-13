@@ -259,9 +259,8 @@ void AudioEngine::configureMetronome(bool enabled, double bpm, int32_t numerator
                                     int32_t denominator, float gain, bool mainEnabled) noexcept {
     metronomeEnabled_.store(enabled, std::memory_order_relaxed);
     metronomeBpm_.store(std::clamp(bpm, 20.0, 400.0), std::memory_order_relaxed);
-    metronomeNumerator_.store(std::clamp(numerator, 1, 16), std::memory_order_relaxed);
-    const bool validDenominator = denominator == 2 || denominator == 4 || denominator == 8 || denominator == 16;
-    metronomeDenominator_.store(validDenominator ? denominator : 4, std::memory_order_relaxed);
+    metronomeNumerator_.store(std::clamp(numerator, 1, 32), std::memory_order_relaxed);
+    metronomeDenominator_.store(std::clamp(denominator, 1, 32), std::memory_order_relaxed);
     metronomeGain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_relaxed);
     metronomeMainEnabled_.store(mainEnabled, std::memory_order_relaxed);
 }

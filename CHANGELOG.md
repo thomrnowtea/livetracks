@@ -4,6 +4,24 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## [0.2.0-alpha.3] - 2026-08-13
+
+### Added
+
+- Added a persistent Timeline Snap switch: enabled drags land exactly on the visible 250/100/50/10 ms zoom unit; disabled drags remain frame-accurate and free.
+- Added a dedicated SVG Snap control and an explicit `FREE`/`LIBRE` scale state.
+
+### Changed
+
+- Reworked stem dragging around a continuous local preview with one persisted edit on release, avoiding the previous stepped, write-heavy gesture.
+- Kept zoom-out, zoom-in, and the current scale permanently visible in the Timeline toolbar in portrait and landscape.
+- Rebuilt click/tempo editing with project/custom source cards, a compact console-style clock module, directly writable decimal BPM and meter values, safer click routing groups, and independent adaptive scrolling.
+- Removed fixed meter presets and duplicate tempo/meter readouts. Numerator and denominator now accept any value from 1 through 32, while BPM accepts 20 through 400 without rounding away decimals.
+- Removed the redundant Master title bar in both orientations. Landscape now separates global navigation on the left from a Master-only rail on the right; portrait uses an icon strip and a single Template/Inherits/Custom source selector. The scrollable console keeps tempo and meter side by side in landscape, stacks them at full width in portrait, and places full-size click output and MAIN audition below. Landscape show-output modules now scroll independently when needed, without forced height or wasted space.
+- Turned Master section navigation into four equal full-cell targets in both orientations, unified project/song output panels around one console component, moved the song Mix action into its summary header, and made routing content scroll reliably on short screens.
+- Added short restrained transitions to collapsible Timeline, Playlist, Master, and Settings surfaces and corrected cramped portrait/landscape dialogs.
+- Gave debug builds a separate application id and label so emulator QA can coexist with a signed LiveTracks release installation.
+
 ## [0.2.0-alpha.2] - 2026-08-13
 
 ### Added

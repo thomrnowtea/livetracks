@@ -126,8 +126,8 @@ data class MetronomeSettings(
 ) {
     init {
         require(bpm in 20.0..400.0)
-        require(numerator in 1..16)
-        require(denominator in setOf(2, 4, 8, 16))
+        require(numerator in 1..32)
+        require(denominator in 1..32)
         require(gainDb in -60f..6f)
     }
 

@@ -18,8 +18,8 @@ android {
         applicationId = "com.thomrnowtea.livetracks"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 3
-        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0-alpha.2"
+        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 4
+        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0-alpha.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -44,8 +44,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "LiveTracks Debug")
+        }
         release {
             isMinifyEnabled = false
+            resValue("string", "app_name", "LiveTracks")
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
