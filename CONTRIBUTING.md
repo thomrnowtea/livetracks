@@ -14,4 +14,4 @@ LiveTracks is stage software. Reliability, deterministic playback, and safe clic
 
 Development follows semantic version tags. A tag such as `v0.2.0` runs the release workflow and creates a GitHub Release containing a consistently signed, directly installable APK. Tags containing a suffix such as `v0.2.0-rc1` are marked as pre-releases.
 
-Never commit signing keys, local SDK paths, selected audio files, generated screenshots, or device-specific secrets.
+Never commit signing keys, local SDK paths, selected audio files, raw QA captures, or device-specific secrets. Screenshots intentionally published under `docs/images/` must be curated, contain only demo data, and be reviewed for identifying information before staging.

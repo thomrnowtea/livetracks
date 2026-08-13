@@ -32,6 +32,7 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 - Clarified the musical grid hierarchy: amber downbeats, high-contrast beat lines, subdued time subdivisions, and a separate amber playhead.
 - Rebuilt the marker editor with adaptive section chips and a compact voice-cue control.
 - Audited the live Español/English switch, including persisted language selection and previously untranslated transport/Master states.
+- Rebuilt the public repository landing page with real app screenshots, a concise product hierarchy, installation and safety guidance, navigable technical documentation, and responsible disclosure instructions.
 
 ### Safety
 
