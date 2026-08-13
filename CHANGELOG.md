@@ -4,6 +4,17 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## [0.2.0-alpha.4] - 2026-08-13
+
+### Fixed
+
+- Portrait mixer faders now claim only vertical drags, allowing horizontal channel scrolling even when the gesture starts over the fader surface.
+- Mixer strips now use accessible neutral surfaces while preserving each stem's exact Timeline color on the channel guide, meter, fader, pan control, and gain readout.
+- Landscape now stacks full-width console channels vertically; every row places meter, horizontal fader, pan, Mute, and Solo on one operational line, while portrait retains vertical strips.
+- Restored rectangular console fader caps and made Mixer/Master icons rotate with orientation so their visual direction matches the active layout.
+- Added a persistent 60 dp compact transport that keeps Previous, Play/Pause, Next, progress, time, and overflow visible while moving Stop into overflow; the expanded editor transport remains one tap away.
+- Extended the restrained transition system to global workspace changes and Timeline/Mix Console switching instead of limiting it to Master and a few collapsible panels.
+
 ## [0.2.0-alpha.3] - 2026-08-13
 
 ### Added

@@ -23,6 +23,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.foundation.gestures.scrollable
@@ -70,6 +71,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -96,6 +98,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
@@ -273,12 +276,22 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
 @Composable
 private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().clipToBounds().padding(horizontal = 12.dp, vertical = 8.dp)) {
-        when (state.workspace) {
-            Workspace.PROJECTS -> ProjectsScreen(state, vm)
-            Workspace.PLAYLIST -> PlaylistScreen(state, vm)
-            Workspace.TRACK -> TrackScreen(state, vm, addAudio)
-            Workspace.MASTER -> MasterScreen(state, vm)
-            Workspace.SETTINGS -> SettingsScreen(state, vm)
+        AnimatedContent(
+            targetState = state.workspace,
+            transitionSpec = {
+                (fadeIn(tween(160)) + slideInVertically(tween(180)) { it / 18 }) togetherWith
+                    (fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 22 })
+            },
+            modifier = Modifier.fillMaxSize(),
+            label = "workspace",
+        ) { workspace ->
+            when (workspace) {
+                Workspace.PROJECTS -> ProjectsScreen(state, vm)
+                Workspace.PLAYLIST -> PlaylistScreen(state, vm)
+                Workspace.TRACK -> TrackScreen(state, vm, addAudio)
+                Workspace.MASTER -> MasterScreen(state, vm)
+                Workspace.SETTINGS -> SettingsScreen(state, vm)
+            }
         }
     }
 }
@@ -765,8 +778,16 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
         ) { vm.setWorkspace(Workspace.PLAYLIST) } }
         return
     }
-    Box(Modifier.fillMaxSize()) {
-        when (state.trackWorkspace) {
+    AnimatedContent(
+        targetState = state.trackWorkspace,
+        transitionSpec = {
+            (fadeIn(tween(160)) + slideInVertically(tween(180)) { it / 18 }) togetherWith
+                (fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 22 })
+        },
+        modifier = Modifier.fillMaxSize(),
+        label = "trackWorkspace",
+    ) { workspace ->
+        when (workspace) {
             TrackWorkspace.TIMELINE -> TimelineEditor(state, vm) { showStemOptions = true }
             TrackWorkspace.MIXER -> MixerConsole(state.tracks, vm)
         }
@@ -1442,10 +1463,20 @@ private fun MixerConsole(tracks: List<MixerTrackUi>, vm: MainViewModel) {
         }
         return
     }
+    val configuration = LocalConfiguration.current
+    val landscape = configuration.screenWidthDp > configuration.screenHeightDp
     Surface(Modifier.fillMaxSize(), color = Bg, shape = RoundedCornerShape(2.dp)) {
-        LazyRow(Modifier.fillMaxSize().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            itemsIndexed(tracks, key = { _, it -> it.id }) { index, track ->
-                ChannelStrip(index, track, { vm.setTrackGain(index, it) }, { vm.setTrackPan(index, it) }, { vm.toggleMute(index) }, { vm.toggleSolo(index) })
+        if (landscape) {
+            LazyColumn(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                itemsIndexed(tracks, key = { _, it -> it.id }) { index, track ->
+                    ChannelStrip(index, track, { vm.setTrackGain(index, it) }, { vm.setTrackPan(index, it) }, { vm.toggleMute(index) }, { vm.toggleSolo(index) })
+                }
+            }
+        } else {
+            LazyRow(Modifier.fillMaxSize().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                itemsIndexed(tracks, key = { _, it -> it.id }) { index, track ->
+                    ChannelStrip(index, track, { vm.setTrackGain(index, it) }, { vm.setTrackPan(index, it) }, { vm.toggleMute(index) }, { vm.toggleSolo(index) })
+                }
             }
         }
     }
@@ -1453,13 +1484,83 @@ private fun MixerConsole(tracks: List<MixerTrackUi>, vm: MainViewModel) {
 
 @Composable
 private fun ChannelStrip(index: Int, track: MixerTrackUi, gain: (Float) -> Unit, pan: (Float) -> Unit, mute: () -> Unit, solo: () -> Unit) {
-    val stripColor = channelColor(index)
+    val stripColor = Color(track.colorArgb)
+    val configuration = LocalConfiguration.current
+    val landscape = configuration.screenWidthDp > configuration.screenHeightDp
     Surface(
-        Modifier.width(208.dp).fillMaxHeight(),
-        color = Panel,
+        if (landscape) Modifier.fillMaxWidth().height(142.dp) else Modifier.width(208.dp).fillMaxHeight(),
+        color = if (index % 2 == 0) Panel else Color(0xFF1C1E20),
         shape = RoundedCornerShape(2.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, Border),
     ) {
+        if (landscape) {
+            LandscapeChannelStrip(index, track, stripColor, gain, pan, mute, solo)
+        } else {
+            PortraitChannelStrip(index, track, stripColor, gain, pan, mute, solo)
+        }
+    }
+}
+
+@Composable
+private fun LandscapeChannelStrip(
+    index: Int,
+    track: MixerTrackUi,
+    stripColor: Color,
+    gain: (Float) -> Unit,
+    pan: (Float) -> Unit,
+    mute: () -> Unit,
+    solo: () -> Unit,
+) {
+    Row(Modifier.fillMaxSize()) {
+        Box(Modifier.width(5.dp).fillMaxHeight().background(stripColor))
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth().height(34.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(track.name, Modifier.weight(1f), color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    if (track.isClickReference) "REF" else (index + 1).toString().padStart(2, '0'),
+                    color = if (track.isClickReference) Amber else TextMuted,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            HorizontalDivider(color = Border)
+            Row(
+                Modifier.weight(1f).fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                PeakMeter(track.peak, stripColor, Modifier.width(10.dp).fillMaxHeight(.82f))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                    LabelValue(tr("NIVEL", "LEVEL"), formatDb(track.gainDb), stripColor)
+                    HorizontalConsoleFader(track.gainDb, gain, stripColor, Modifier.fillMaxWidth())
+                }
+                Column(Modifier.width(82.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("PAN", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        RotaryKnob(track.pan, -1f..1f, pan, stripColor, Modifier.size(48.dp))
+                        Text(panLabel(track.pan), color = stripColor, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Row(Modifier.width(112.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ToggleButton("M", track.muted, Red, mute, Modifier.weight(1f))
+                    ToggleButton("S", track.soloed, Amber, solo, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitChannelStrip(
+    index: Int,
+    track: MixerTrackUi,
+    stripColor: Color,
+    gain: (Float) -> Unit,
+    pan: (Float) -> Unit,
+    mute: () -> Unit,
+    solo: () -> Unit,
+) {
         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.fillMaxWidth().height(3.dp).background(stripColor))
             Row(Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1474,13 +1575,13 @@ private fun ChannelStrip(index: Int, track: MixerTrackUi, gain: (Float) -> Unit,
             }
             HorizontalDivider(color = Border)
             Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PeakMeter(track.peak, MeterGreen, Modifier.width(10.dp).fillMaxHeight())
+                PeakMeter(track.peak, stripColor, Modifier.width(10.dp).fillMaxHeight())
                 Spacer(Modifier.width(8.dp))
-                VerticalFader(track.gainDb, gain, Silver, Modifier.weight(1f).fillMaxHeight())
+                VerticalFader(track.gainDb, gain, stripColor, Modifier.weight(1f).fillMaxHeight())
             }
-            Text(formatDb(track.gainDb), color = TextMain, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(formatDb(track.gainDb), color = stripColor, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Row(Modifier.fillMaxWidth().height(62.dp), verticalAlignment = Alignment.CenterVertically) {
-                RotaryKnob(track.pan, -1f..1f, pan, Mint, Modifier.size(52.dp))
+                RotaryKnob(track.pan, -1f..1f, pan, stripColor, Modifier.size(52.dp))
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text("PAN", color = TextMuted, fontSize = 7.sp, fontWeight = FontWeight.SemiBold)
@@ -1493,15 +1594,39 @@ private fun ChannelStrip(index: Int, track: MixerTrackUi, gain: (Float) -> Unit,
             }
             Box(Modifier.fillMaxWidth().height(4.dp).background(stripColor))
         }
-    }
 }
 
-private fun channelColor(index: Int): Color = listOf(
-    Color(0xFF728F86),
-    Color(0xFF6E8098),
-    Color(0xFF83758F),
-    Color(0xFF9A825E),
-)[index % 4]
+@Composable
+private fun HorizontalConsoleFader(value: Float, change: (Float) -> Unit, color: Color, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.height(44.dp)) {
+        val capWidth = 40.dp
+        val normalized = ((value + 60f) / 66f).coerceIn(0f, 1f)
+        Slider(
+            value = value,
+            onValueChange = change,
+            valueRange = -60f..6f,
+            colors = SliderDefaults.colors(
+                thumbColor = Color.Transparent,
+                activeTrackColor = color,
+                inactiveTrackColor = Border,
+                activeTickColor = Color.Transparent,
+                inactiveTickColor = Color.Transparent,
+            ),
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = (maxWidth - capWidth) * normalized)
+                .size(width = capWidth, height = 22.dp)
+                .background(Silver, RoundedCornerShape(3.dp))
+                .border(1.dp, Color(0xFF73777A), RoundedCornerShape(3.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.width(24.dp).height(2.dp).background(color, RoundedCornerShape(1.dp)))
+        }
+    }
+}
 
 @Composable
 private fun VerticalFader(value: Float, change: (Float) -> Unit, color: Color, modifier: Modifier = Modifier) {
@@ -1509,11 +1634,11 @@ private fun VerticalFader(value: Float, change: (Float) -> Unit, color: Color, m
     Canvas(
         modifier.pointerInput(Unit) {
             var workingValue = currentValue
-            detectDragGestures(
+            detectVerticalDragGestures(
                 onDragStart = { workingValue = currentValue },
-                onDrag = { event, amount ->
+                onVerticalDrag = { event, dragAmount ->
                     event.consume()
-                    val delta = if (size.height > 0) -amount.y / size.height * 66f else 0f
+                    val delta = if (size.height > 0) -dragAmount / size.height * 66f else 0f
                     workingValue = (workingValue + delta).coerceIn(-60f, 6f)
                     change(workingValue)
                 },
@@ -1530,6 +1655,7 @@ private fun VerticalFader(value: Float, change: (Float) -> Unit, color: Color, m
         }
         val normalized = (6f - value) / 66f
         val y = top + (bottom - top) * normalized
+        drawLine(color.copy(alpha = .55f), androidx.compose.ui.geometry.Offset(x, y), androidx.compose.ui.geometry.Offset(x, bottom), 8.dp.toPx(), StrokeCap.Round)
         drawRoundRect(color = Color(0xFF777B7E), topLeft = androidx.compose.ui.geometry.Offset(x - 24.dp.toPx(), y - 6.dp.toPx()), size = androidx.compose.ui.geometry.Size(48.dp.toPx(), 12.dp.toPx()), cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
         drawLine(color, androidx.compose.ui.geometry.Offset(x - 17.dp.toPx(), y), androidx.compose.ui.geometry.Offset(x + 17.dp.toPx(), y), 2.dp.toPx())
     }
@@ -2866,6 +2992,7 @@ private fun CompactTransport(
     openMaster: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val project = state.selectedProject()
     val master = state.selectedMaster()
     val masterIndex = project?.playlist?.indexOfFirst { it.id == master?.id } ?: -1
@@ -2876,10 +3003,38 @@ private fun CompactTransport(
     val total = maxOf(engineDuration, master?.durationSeconds() ?: 0.0)
     val position = if (state.diagnostics.durationFrames > 0) state.diagnostics.renderedFrames.toDouble() / rate else 0.0
     val fraction = if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f
+    val transportHeight by animateDpAsState(if (expanded) 94.dp else 60.dp, tween(180), label = "transportHeight")
     Surface(color = Color(0xFF0C1116)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(94.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(transportHeight)) {
             val compact = maxWidth < 600.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                if (!expanded) {
+                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        TransportIconButton(R.drawable.ic_ui_previous, tr("Pista anterior", "Previous track"), canPrevious, previous)
+                        Spacer(Modifier.width(4.dp))
+                        Button(onClick = playPause, enabled = !state.openingOutput, modifier = Modifier.size(52.dp), contentPadding = PaddingValues(0.dp), colors = ButtonDefaults.buttonColors(containerColor = if (state.diagnostics.toneEnabled) Amber else Mint, contentColor = Bg), shape = CircleShape) {
+                            VectorIcon(if (state.diagnostics.toneEnabled) R.drawable.ic_ui_pause else R.drawable.ic_ui_play, tr("Reproducir o pausar", "Play or pause"), Bg, Modifier.size(27.dp))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        TransportIconButton(R.drawable.ic_ui_next, tr("Pista siguiente", "Next track"), canNext, next)
+                        Spacer(Modifier.width(8.dp))
+                        Slider(fraction, seek, enabled = state.diagnostics.durationFrames > 0, modifier = Modifier.weight(1f).height(30.dp))
+                        Text("${timeText(position)}/${timeText(total)}", Modifier.width(if (compact) 86.dp else 108.dp), color = Mint, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End, maxLines = 1)
+                        Spacer(Modifier.width(4.dp))
+                        Box {
+                            TransportIconButton(R.drawable.ic_ui_more, tr("Más opciones de transporte", "More transport options"), true) { menuExpanded = true }
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
+                                TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
+                                TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
+                                TimelineMenuItem(DawIcon.MASTER, tr("Abrir master", "Open master"), project != null) { menuExpanded = false; openMaster() }
+                                TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        TransportIconButton(R.drawable.ic_ui_arrow_up, tr("Expandir transporte", "Expand transport"), true) { expanded = true }
+                    }
+                } else {
                 Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                         Text(master?.name ?: tr("Sin pista", "No track"), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2907,11 +3062,14 @@ private fun CompactTransport(
                             TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
                         }
                     }
+                    Spacer(Modifier.width(4.dp))
+                    TransportIconButton(R.drawable.ic_ui_arrow_down, tr("Minimizar transporte", "Collapse transport"), true) { expanded = false }
                 }
                 Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
                     Slider(fraction, seek, enabled = state.diagnostics.durationFrames > 0, modifier = Modifier.weight(1f).height(30.dp))
                     Text("${timeText(position)}/${timeText(total)}", Modifier.width(if (compact) 92.dp else 108.dp), color = Mint, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
                     if (!compact) Text("  XR ${state.diagnostics.xRuns}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                }
                 }
             }
         }
@@ -2943,7 +3101,18 @@ private fun ConsolePanel(modifier: Modifier = Modifier, padding: androidx.compos
 
 @Composable private fun SectionHeader(title: String, subtitle: String, action: @Composable () -> Unit) = Row(verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Eyebrow(title); Text(subtitle, color = TextMuted, fontSize = 9.sp) }; action() }
 @Composable private fun Eyebrow(text: String) = Text(text, color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = .7.sp)
-@Composable private fun VectorIcon(iconRes: Int, description: String?, tint: Color, modifier: Modifier = Modifier) = Image(painterResource(iconRes), contentDescription = description, colorFilter = ColorFilter.tint(tint), modifier = modifier)
+@Composable
+private fun VectorIcon(iconRes: Int, description: String?, tint: Color, modifier: Modifier = Modifier) {
+    val configuration = LocalConfiguration.current
+    val rotateConsoleIcon = configuration.screenWidthDp > configuration.screenHeightDp &&
+        (iconRes == R.drawable.ic_ui_mixer || iconRes == R.drawable.ic_ui_master)
+    Image(
+        painterResource(iconRes),
+        contentDescription = description,
+        colorFilter = ColorFilter.tint(tint),
+        modifier = if (rotateConsoleIcon) modifier.rotate(90f) else modifier,
+    )
+}
 @Composable private fun PrimarySmall(text: String, onClick: () -> Unit) = Button(onClick = onClick, modifier = Modifier.height(40.dp), contentPadding = PaddingValues(horizontal = 14.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Bg), shape = RoundedCornerShape(8.dp)) { VectorIcon(R.drawable.ic_ui_add, null, Bg, Modifier.size(18.dp)); Spacer(Modifier.width(7.dp)); Text(text, fontSize = 10.sp, fontWeight = FontWeight.Black) }
 
 @Composable
