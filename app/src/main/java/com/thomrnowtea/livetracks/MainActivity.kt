@@ -24,7 +24,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.Orientation
@@ -906,6 +905,22 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
         val viewportWidthPx = with(density) { (maxWidth - labelWidth).coerceAtLeast(120.dp).toPx() }
         val visibleSeconds = (viewportWidthPx / pxPerSecond).toDouble()
         val maxPanSeconds = (maxSeconds - visibleSeconds).coerceAtLeast(0.0)
+        fun changeZoom(nextIndex: Int) {
+            val clampedIndex = nextIndex.coerceIn(0, zoomLevels.lastIndex)
+            if (clampedIndex == zoomIndex) return
+            val cursorSeconds = localCursorFrames.toDouble() / TIMELINE_SAMPLE_RATE
+            val oldVisibleSeconds = visibleSeconds
+            val anchor = if (oldVisibleSeconds > 0.0) {
+                ((cursorSeconds - panSeconds) / oldVisibleSeconds).coerceIn(0.0, 1.0)
+            } else 0.5
+            val nextPxPerSecond = with(density) { zoomLevels[clampedIndex].dp.toPx() }
+            val nextVisibleSeconds = (viewportWidthPx / nextPxPerSecond).toDouble()
+            zoomIndex = clampedIndex
+            panSeconds = (cursorSeconds - anchor * nextVisibleSeconds).coerceIn(
+                0.0,
+                (maxSeconds - nextVisibleSeconds).coerceAtLeast(0.0),
+            )
+        }
         LaunchedEffect(dpPerSecond, maxSeconds, viewportWidthPx) { panSeconds = panSeconds.coerceIn(0.0, maxPanSeconds) }
         LaunchedEffect(state.timelineCursorFrames, state.diagnostics.toneEnabled) {
             if (state.diagnostics.toneEnabled) {
@@ -976,10 +991,10 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
                                     modifier = Modifier.width(56.dp),
                                 )
                                 DawIconButton(DawIcon.ZOOM_OUT, tr("Alejar", "Zoom out"), enabled = zoomIndex > 0) {
-                                    zoomIndex = (zoomIndex - 1).coerceAtLeast(0)
+                                    changeZoom(zoomIndex - 1)
                                 }
                                 DawIconButton(DawIcon.ZOOM_IN, tr("Acercar", "Zoom in"), enabled = zoomIndex < zoomLevels.lastIndex) {
-                                    zoomIndex = (zoomIndex + 1).coerceAtMost(zoomLevels.lastIndex)
+                                    changeZoom(zoomIndex + 1)
                                 }
                                 Box {
                                     DawIconButton(DawIcon.MORE, tr("Más herramientas", "More tools"), onClick = { toolsMenuExpanded = true })
@@ -1096,7 +1111,7 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
                         LazyColumn(Modifier.weight(1f)) {
                             itemsIndexed(state.tracks, key = { _, it -> it.id }) { index, track ->
                                 Row(Modifier.fillMaxWidth().height(68.dp)) {
-                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded, replaceAudio, { from, to -> vm.moveTrack(from, to) }) {
+                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded, replaceAudio) {
                                         vm.selectTimelineTrack(track.id)
                                     }
                                     TimelineLaneViewport(
@@ -1360,23 +1375,8 @@ private fun DrawScope.drawBeatLines(
 }
 
 @Composable
-private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, replace: (String) -> Unit, move: (String, Int) -> Unit, select: () -> Unit) {
-    var dragDistance by remember(track.id) { mutableFloatStateOf(0f) }
+private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, replace: (String) -> Unit, select: () -> Unit) {
     Surface(modifier = Modifier.width(width).fillMaxHeight()
-        .pointerInput(track.id) {
-            detectDragGesturesAfterLongPress(
-                onDragStart = { dragDistance = 0f },
-                onDragEnd = {
-                    val delta = (dragDistance / 68.dp.toPx()).roundToInt()
-                    if (delta != 0) move(track.id, (index + delta).coerceAtLeast(0))
-                    dragDistance = 0f
-                },
-                onDragCancel = { dragDistance = 0f },
-            ) { change, amount ->
-                change.consume()
-                dragDistance += amount.y
-            }
-        }
         .combinedClickable(onClick = select, onDoubleClick = { replace(track.id) }),
         color = if (selected) Raised else if (index % 2 == 0) Panel else Color(0xFF191B1D)) {
         Row(Modifier.fillMaxSize().padding(horizontal = if (compact) 5.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
