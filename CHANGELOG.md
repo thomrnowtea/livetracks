@@ -6,7 +6,7 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ### Changed
 
-- Updated CI and release actions to their current Node 24-compatible major versions and added scheduled dependency update checks.
+- Updated CI and release actions to their current Node 24-compatible major versions and added scheduled dependency update checks with explicit toolchain-compatibility limits.
 
 ## [0.2.0-alpha.1] - 2026-08-13
 

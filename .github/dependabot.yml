@@ -17,3 +17,14 @@ updates:
       time: "09:00"
       timezone: America/Argentina/Buenos_Aires
     open-pull-requests-limit: 5
+    ignore:
+      # These upgrades require coordinated SDK, Android Gradle Plugin, or
+      # Kotlin compiler migrations. Keep compatible patch/minor updates open.
+      - dependency-name: "androidx.core:core"
+        versions: [">= 1.19.0"]
+      - dependency-name: "androidx.activity:activity-compose"
+        versions: [">= 1.13.0"]
+      - dependency-name: "org.jetbrains.kotlinx:kotlinx-coroutines-android"
+        versions: [">= 1.11.0"]
+      - dependency-name: "gradle-wrapper"
+        versions: [">= 9.0.0"]
