@@ -15,7 +15,7 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 - Kept zoom-out, zoom-in, and the current scale permanently visible in the Timeline toolbar in portrait and landscape.
 - Rebuilt click/tempo editing with project/custom source cards, a compact console-style clock module, directly writable decimal BPM and meter values, safer click routing groups, and independent adaptive scrolling.
 - Removed fixed meter presets and duplicate tempo/meter readouts. Numerator and denominator now accept any value from 1 through 32, while BPM accepts 20 through 400 without rounding away decimals.
-- Removed the redundant Master title bar in both orientations. Landscape now separates global navigation on the left from a Master-only rail on the right; portrait uses an icon strip and a single Template/Inherits/Custom source selector. Tempo, meter, click level, and MAIN audition retain full console sizing above transport.
+- Removed the redundant Master title bar in both orientations. Landscape now separates global navigation on the left from a Master-only rail on the right; portrait uses an icon strip and a single Template/Inherits/Custom source selector. The scrollable console keeps tempo and meter side by side in landscape, stacks them at full width in portrait, and places full-size click output and MAIN audition below. Landscape show-output modules now scroll independently when needed, without forced height or wasted space.
 - Added short restrained transitions to collapsible Timeline, Playlist, Master, and Settings surfaces and corrected cramped portrait/landscape dialogs.
 - Gave debug builds a separate application id and label so emulator QA can coexist with a signed LiveTracks release installation.
 

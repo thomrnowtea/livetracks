@@ -1717,7 +1717,7 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth < 600.dp) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProjectOutputModule(project, vm, Modifier.fillMaxWidth().height(300.dp))
+                ProjectOutputModule(project, vm, Modifier.fillMaxWidth().height(220.dp))
                 ConsolePanel(Modifier.fillMaxWidth().height(180.dp), padding = 16.dp) {
                     Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
                     SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
@@ -1726,12 +1726,14 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
             }
         } else Row(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ProjectOutputModule(project, vm, Modifier.width(400.dp).fillMaxHeight())
-            ConsolePanel(Modifier.weight(1f).fillMaxHeight(), padding = 20.dp) {
-                Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
-                Spacer(Modifier.height(12.dp))
-                SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
-                SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
-                SummaryLine(tr("Plantilla de click", "Click template"), "${formatBpm(project.defaultMetronome.bpm)} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}")
+            ConsolePanel(Modifier.weight(1f).fillMaxHeight(), padding = 0.dp) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+                    Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
+                    Spacer(Modifier.height(12.dp))
+                    SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
+                    SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
+                    SummaryLine(tr("Plantilla de click", "Click template"), "${formatBpm(project.defaultMetronome.bpm)} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}")
+                }
             }
         }
     }
@@ -1773,7 +1775,7 @@ private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: Mai
                             enabled = !inherited,
                             usingReferenceStem = clickReference != null,
                             vm = vm,
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
@@ -1808,7 +1810,7 @@ private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: Mai
                             enabled = !inherited,
                             usingReferenceStem = clickReference != null,
                             vm = vm,
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
@@ -1892,14 +1894,15 @@ private fun MetronomeWorkspaceRail(
 @Composable
 private fun ProjectOutputModule(project: Project, vm: MainViewModel, modifier: Modifier) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
-        Column(Modifier.padding(14.dp)) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
             Text(tr("SALIDA DEL SHOW", "SHOW OUTPUT"), color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Black)
-            Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 KnobControl("VOLUME", project.masterGainDb, -60f..6f, vm::setProjectGain, Mint, formatDb(project.masterGainDb), 92.dp)
                 KnobControl("PAN", project.masterPan, -1f..1f, vm::setProjectPan, Amber, panLabel(project.masterPan), 76.dp)
             }
-            Spacer(Modifier.weight(1f))
             Text(tr("Afecta toda la playlist", "Controls the entire setlist"), color = TextMuted, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
     }
@@ -2023,15 +2026,15 @@ private fun MetronomeControlCard(
     modifier: Modifier,
 ) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+            MetronomeControls(value, enabled, usingReferenceStem) { transform -> vm.updateMasterMetronome(transform) }
             if (usingReferenceStem) {
+                Spacer(Modifier.height(12.dp))
                 SettingsNotice(tr(
                     "El stem de referencia reemplaza el click nativo y sale sólo por MONITOR. BPM y compás siguen controlando la grilla y las marcas.",
                     "The reference stem replaces the native click and routes to MONITOR only. BPM and meter still control the grid and markers.",
                 ))
-                Spacer(Modifier.height(12.dp))
             }
-            MetronomeControls(value, enabled, usingReferenceStem) { transform -> vm.updateMasterMetronome(transform) }
         }
     }
 }
@@ -2043,81 +2046,10 @@ private fun MetronomeControls(
     usingReferenceStem: Boolean,
     update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val horizontal = maxWidth >= 420.dp
-        if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-            MetronomeClockConsole(value, enabled, update, Modifier.weight(1.35f))
-            CompactClickOutputControl(value, enabled, usingReferenceStem, update, Modifier.weight(.85f))
-        } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetronomeClockConsole(value, enabled, update, Modifier.fillMaxWidth())
-            NativeClickControl(value, enabled, usingReferenceStem, update, Modifier.fillMaxWidth())
-            MainAuditionControl(value, enabled, update, Modifier.fillMaxWidth())
-        }
-    }
-}
-
-@Composable
-private fun CompactClickOutputControl(
-    value: MetronomeSettings,
-    enabled: Boolean,
-    usingReferenceStem: Boolean,
-    update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
-    modifier: Modifier,
-) {
-    Surface(modifier, color = Raised, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border)) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Row(Modifier.height(42.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (usingReferenceStem) tr("CLICK DE REFERENCIA", "REFERENCE CLICK") else tr("CLICK NATIVO", "NATIVE CLICK"),
-                    modifier = Modifier.weight(1f),
-                    color = if (usingReferenceStem) Amber else TextMain,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-                Switch(
-                    checked = value.enabled && !usingReferenceStem,
-                    onCheckedChange = { update { old -> old.copy(enabled = it) } },
-                    enabled = enabled && !usingReferenceStem,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Bg,
-                        checkedTrackColor = Mint,
-                        checkedBorderColor = Mint,
-                        uncheckedThumbColor = TextMuted,
-                        uncheckedTrackColor = Panel,
-                        uncheckedBorderColor = Border,
-                    ),
-                )
-            }
-            Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(formatDb(value.gainDb), color = Amber, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                Slider(
-                    value = value.gainDb,
-                    onValueChange = { gain -> update { it.copy(gainDb = gain) } },
-                    modifier = Modifier.weight(1f),
-                    valueRange = -60f..0f,
-                    enabled = enabled,
-                )
-            }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .65f)))
-            Row(Modifier.height(42.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(tr("AUDICIÓN MAIN", "MAIN AUDITION"), Modifier.weight(1f), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                Switch(
-                    checked = value.mainEnabled,
-                    onCheckedChange = { main -> update { it.copy(mainEnabled = main) } },
-                    enabled = enabled,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Bg,
-                        checkedTrackColor = Red,
-                        checkedBorderColor = Red,
-                        uncheckedThumbColor = TextMuted,
-                        uncheckedTrackColor = Panel,
-                        uncheckedBorderColor = Border,
-                    ),
-                )
-            }
-        }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        MetronomeClockConsole(value, enabled, update, Modifier.fillMaxWidth())
+        NativeClickControl(value, enabled, usingReferenceStem, update, Modifier.fillMaxWidth())
+        MainAuditionControl(value, enabled, update, Modifier.fillMaxWidth())
     }
 }
 
@@ -2204,10 +2136,12 @@ private fun MetronomeClockConsole(
     update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
     modifier: Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val portrait = configuration.screenHeightDp > configuration.screenWidthDp
     Surface(modifier, color = Raised, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border)) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
-            val narrow = maxWidth < 230.dp
-            if (narrow) Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            val stacked = portrait || maxWidth < 230.dp
+            if (stacked) Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 TempoConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .7f)))
                 MeterConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
