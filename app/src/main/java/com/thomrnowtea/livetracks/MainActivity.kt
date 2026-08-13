@@ -1,6 +1,7 @@
 package com.thomrnowtea.livetracks
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -143,6 +144,7 @@ import com.thomrnowtea.livetracks.domain.MetronomeSettings
 import com.thomrnowtea.livetracks.domain.Project
 import com.thomrnowtea.livetracks.domain.SafetyStatus
 import com.thomrnowtea.livetracks.domain.snapTimelineFrames
+import com.thomrnowtea.livetracks.domain.tapTempoBpm
 import com.thomrnowtea.livetracks.domain.TIMELINE_SAMPLE_RATE
 import com.thomrnowtea.livetracks.domain.TrackType
 import com.thomrnowtea.livetracks.domain.TimelineMarker
@@ -2124,7 +2126,7 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
     val summaryRows = listOf(
         tr("Canciones", "Songs") to project.playlist.size.toString(),
         tr("Stems", "Stems") to project.playlist.sumOf { it.tracks.size }.toString(),
-        tr("Plantilla de click", "Click template") to
+        tr("Tempo inicial", "Initial tempo") to
             "${formatBpm(project.defaultMetronome.bpm)} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}",
     )
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -2158,154 +2160,17 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
 
 @Composable
 private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel, modifier: Modifier = Modifier.fillMaxSize()) {
-    var projectTemplate by rememberSaveable(master?.id) { mutableStateOf(false) }
-    BoxWithConstraints(modifier.padding(top = 4.dp)) {
-        val wide = maxWidth >= 680.dp
-        if (wide) {
-            val inherited = master?.metronomeOverride == null
-            val clickReference = master?.clickReferenceTrack()
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MetronomeWorkspaceRail(
-                    projectTemplate = projectTemplate,
-                    inherited = inherited,
-                    hasSelectedSong = master != null,
-                    clickReferenceName = clickReference?.name,
-                    selectTemplate = { projectTemplate = true },
-                    selectInherited = {
-                        projectTemplate = false
-                        vm.setMasterUsesDefault(true)
-                    },
-                    selectCustom = {
-                        projectTemplate = false
-                        vm.setMasterUsesDefault(false)
-                    },
-                    modifier = Modifier.width(170.dp).fillMaxHeight(),
-                )
-                Box(Modifier.weight(1f).fillMaxHeight()) {
-                    if (projectTemplate) {
-                        DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
-                    } else if (master == null) {
-                        MissingMasterMetronome(vm)
-                    } else {
-                        MetronomeControlCard(
-                            value = master.metronome(project.defaultMetronome),
-                            enabled = !inherited,
-                            usingReferenceStem = clickReference != null,
-                            vm = vm,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            }
-        } else {
-            val inherited = master?.metronomeOverride == null
-            val clickReference = master?.clickReferenceTrack()
-            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MetronomeWorkspaceStrip(
-                    projectTemplate = projectTemplate,
-                    inherited = inherited,
-                    hasSelectedSong = master != null,
-                    selectTemplate = { projectTemplate = true },
-                    selectInherited = {
-                        projectTemplate = false
-                        vm.setMasterUsesDefault(true)
-                    },
-                    selectCustom = {
-                        projectTemplate = false
-                        vm.setMasterUsesDefault(false)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    if (projectTemplate) {
-                        DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
-                    } else if (master == null) {
-                        MissingMasterMetronome(vm)
-                    } else {
-                        MetronomeControlCard(
-                            value = master.metronome(project.defaultMetronome),
-                            enabled = !inherited,
-                            usingReferenceStem = clickReference != null,
-                            vm = vm,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-            }
-        }
+    if (master == null) {
+        Box(modifier.padding(top = 4.dp)) { MissingMasterMetronome(vm) }
+        return
     }
-}
-
-@Composable
-private fun MetronomeWorkspaceStrip(
-    projectTemplate: Boolean,
-    inherited: Boolean,
-    hasSelectedSong: Boolean,
-    selectTemplate: () -> Unit,
-    selectInherited: () -> Unit,
-    selectCustom: () -> Unit,
-    modifier: Modifier,
-) {
-    Surface(modifier, color = Panel, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border.copy(alpha = .6f))) {
-        Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            CompactMetronomeModeChoice(
-                tr("PLANTILLA", "TEMPLATE"),
-                projectTemplate,
-                modifier = Modifier.weight(1f),
-                click = selectTemplate,
-            )
-            CompactMetronomeModeChoice(
-                tr("HEREDA", "INHERITS"),
-                !projectTemplate && inherited,
-                enabled = hasSelectedSong,
-                modifier = Modifier.weight(1f),
-                click = selectInherited,
-            )
-            CompactMetronomeModeChoice(
-                tr("PROPIO", "CUSTOM"),
-                !projectTemplate && !inherited,
-                enabled = hasSelectedSong,
-                modifier = Modifier.weight(1f),
-                click = selectCustom,
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetronomeWorkspaceRail(
-    projectTemplate: Boolean,
-    inherited: Boolean,
-    hasSelectedSong: Boolean,
-    clickReferenceName: String?,
-    selectTemplate: () -> Unit,
-    selectInherited: () -> Unit,
-    selectCustom: () -> Unit,
-    modifier: Modifier,
-) {
-    Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            ConsoleSectionLabel(tr("RELOJ", "CLOCK"), Mint)
-            CompactMetronomeModeChoice(tr("PLANTILLA", "TEMPLATE"), projectTemplate, modifier = Modifier.fillMaxWidth(), click = selectTemplate)
-            CompactMetronomeModeChoice(
-                tr("HEREDA", "INHERITS"),
-                !projectTemplate && inherited,
-                enabled = hasSelectedSong,
-                modifier = Modifier.fillMaxWidth(),
-                click = selectInherited,
-            )
-            CompactMetronomeModeChoice(
-                tr("PERSONALIZADO", "CUSTOM"),
-                !projectTemplate && !inherited,
-                enabled = hasSelectedSong,
-                modifier = Modifier.fillMaxWidth(),
-                click = selectCustom,
-            )
-            clickReferenceName?.let {
-                Text(it, color = Amber, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-    }
+    MetronomeControlCard(
+        value = master.metronome(project.defaultMetronome),
+        enabled = true,
+        usingReferenceStem = master.clickReferenceTrack() != null,
+        vm = vm,
+        modifier = modifier.padding(top = 4.dp),
+    )
 }
 
 @Composable
@@ -2588,18 +2453,53 @@ private fun MetronomeClockConsole(
 ) {
     val configuration = LocalConfiguration.current
     val portrait = configuration.screenHeightDp > configuration.screenWidthDp
+    var previousTapMillis by remember { mutableLongStateOf(0L) }
+    val tapTempo = {
+        val now = SystemClock.elapsedRealtime()
+        tapTempoBpm(previousTapMillis, now)?.let { bpm ->
+            update { it.copy(bpm = bpm) }
+        }
+        previousTapMillis = now
+    }
     Surface(modifier, color = Raised, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border)) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
             val stacked = portrait || maxWidth < 230.dp
             if (stacked) Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                TapTempoButton(enabled, tapTempo, Modifier.fillMaxWidth().height(52.dp))
                 TempoConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .7f)))
                 MeterConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
             } else Row(verticalAlignment = Alignment.CenterVertically) {
+                TapTempoButton(enabled, tapTempo, Modifier.width(78.dp).height(116.dp))
+                Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(116.dp).background(Border.copy(alpha = .7f)))
                 TempoConsoleModule(value, enabled, update, Modifier.weight(1f))
                 Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(116.dp).background(Border.copy(alpha = .7f)))
                 MeterConsoleModule(value, enabled, update, Modifier.weight(1.08f))
             }
+        }
+    }
+}
+
+@Composable
+private fun TapTempoButton(enabled: Boolean, tap: () -> Unit, modifier: Modifier) {
+    val tapDescription = tr("Tapear tempo", "Tap tempo")
+    Surface(
+        onClick = tap,
+        enabled = enabled,
+        modifier = modifier.semantics { contentDescription = tapDescription; role = Role.Button },
+        color = if (enabled) Mint else Raised,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, if (enabled) Mint else Border),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                "TAP",
+                color = if (enabled) Bg else TextMuted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.4.sp,
+            )
         }
     }
 }

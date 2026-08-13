@@ -146,7 +146,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(settings = settingsRepository.read(), notificationPolicyAccessGranted = performanceMode.hasNotificationPolicyAccess) }
         hardware.start()
         viewModelScope.launch {
-            val projects = runCatching { repository.getProjects() }.getOrElse { emptyList() }
+            val storedProjects = runCatching { repository.getProjects() }.getOrElse { emptyList() }
+            val projects = storedProjects.map { project ->
+                project.copy(playlist = project.playlist.map { master ->
+                    if (master.metronomeOverride == null) {
+                        master.copy(metronomeOverride = project.defaultMetronome)
+                    } else master
+                })
+            }
+            if (projects != storedProjects) repository.replaceProjects(projects)
             val project = projects.firstOrNull()
             val master = project?.playlist?.firstOrNull()
             val cachedAnalyses = withContext(Dispatchers.IO) {
@@ -256,9 +264,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun createMasterTrack(name: String) {
-        if (selectedProject() == null) return
+        val project = selectedProject() ?: return
         clearTimelineHistory()
-        val master = MasterTrack(UUID.randomUUID().toString(), name.trim().ifBlank { "${uiText("Pista", "Track")} ${selectedProject()!!.playlist.size + 1}" })
+        val master = MasterTrack(
+            UUID.randomUUID().toString(),
+            name.trim().ifBlank { "${uiText("Pista", "Track")} ${project.playlist.size + 1}" },
+            metronomeOverride = project.defaultMetronome,
+        )
         updateSelectedProject { it.copy(playlist = it.playlist + master) }
         _state.update { it.copy(selectedMasterTrackId = master.id, selectedTimelineTrackId = null,
             timelineCursorFrames = 0, tracks = emptyList(), workspace = Workspace.PLAYLIST, message = uiText("Pista master agregada", "Master track added")) }
@@ -1019,22 +1031,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setMasterUsesDefault(useDefault: Boolean) {
-        val project = selectedProject() ?: return
-        updateSelectedMaster { it.copy(metronomeOverride = if (useDefault) null else it.metronome(project.defaultMetronome)) }
-        applyLiveMetronome(); saveNow()
-    }
-
-    fun updateDefaultMetronome(transform: (MetronomeSettings) -> MetronomeSettings) {
-        updateSelectedProject { it.copy(defaultMetronome = transform(it.defaultMetronome)) }
-        if (selectedMasterTrack()?.metronomeOverride == null) applyLiveMetronome()
-        scheduleSave()
-    }
-
     fun updateMasterMetronome(transform: (MetronomeSettings) -> MetronomeSettings) {
         val project = selectedProject() ?: return
         updateSelectedMaster { it.copy(metronomeOverride = transform(it.metronome(project.defaultMetronome))) }
         applyLiveMetronome(); scheduleSave()
+    }
+
+    fun updateDefaultMetronome(transform: (MetronomeSettings) -> MetronomeSettings) {
+        updateSelectedProject { it.copy(defaultMetronome = transform(it.defaultMetronome)) }
+        scheduleSave()
     }
 
     private fun configureNativeMixer(project: Project, master: MasterTrack, voiceMarkers: List<TimelineMarker> = emptyList()) {

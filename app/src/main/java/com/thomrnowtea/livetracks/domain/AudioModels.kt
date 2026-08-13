@@ -140,6 +140,13 @@ data class MetronomeSettings(
     fun barDurationFrames(): Long = beatDurationFrames() * numerator
 }
 
+/** Returns the tempo represented by two consecutive taps, or null outside 20..400 BPM. */
+fun tapTempoBpm(previousTapMillis: Long, currentTapMillis: Long): Double? {
+    val intervalMillis = currentTapMillis - previousTapMillis
+    if (previousTapMillis <= 0L || intervalMillis !in 150L..3_000L) return null
+    return (60_000.0 / intervalMillis).coerceIn(20.0, 400.0)
+}
+
 /** One playable playlist item containing synchronized, independently mixed stems. */
 data class MasterTrack(
     val id: String,
@@ -147,7 +154,7 @@ data class MasterTrack(
     val tracks: List<Track> = emptyList(),
     val gainDb: Float = 0f,
     val pan: Float = 0f,
-    /** Null means this item inherits the project's metronome template. */
+    /** Null is accepted only for legacy persisted data and is migrated to a per-track copy on load. */
     val metronomeOverride: MetronomeSettings? = null,
     val markers: List<TimelineMarker> = emptyList(),
     /** Whether the musical beat/downbeat overlay is visible in this timeline. */
