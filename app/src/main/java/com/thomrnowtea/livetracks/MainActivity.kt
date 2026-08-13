@@ -1438,6 +1438,7 @@ private fun TimelineLaneViewport(
     val visibleStart = max(clipStart, panSeconds)
     val visibleEnd = min(clipEnd, panSeconds + visibleSeconds)
     Box(modifier.background(if (index % 2 == 0) Color(0xFF17191B) else Color(0xFF121416)).clipToBounds()
+        .combinedClickable(onClick = select, onDoubleClick = replace)
         .scrollable(horizontalPan, Orientation.Horizontal)) {
         Canvas(Modifier.matchParentSize()) {
             val firstTick = floor(panSeconds / grid.minorSeconds).toLong()
@@ -1461,7 +1462,6 @@ private fun TimelineLaneViewport(
                     .width(with(density) { widthPx.toDp() }).fillMaxHeight()
                     .clip(RoundedCornerShape(4.dp)).background(clipColor.copy(alpha = if (selected) .78f else .58f))
                     .then(if (selected) Modifier.border(BorderStroke(2.dp, Silver), RoundedCornerShape(4.dp)) else Modifier)
-                    .combinedClickable(onClick = select, onDoubleClick = replace)
                     .pointerInput(track.id, pxPerSecond) {
                         detectDragGestures(
                             onDragStart = {
