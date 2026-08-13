@@ -4,6 +4,10 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+### Changed
+
+- Updated CI and release actions to their current Node 24-compatible major versions and added scheduled dependency update checks.
+
 ## [0.2.0-alpha.1] - 2026-08-13
 
 ### Added
