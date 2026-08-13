@@ -3,12 +3,14 @@ package com.thomrnowtea.livetracks.audio
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.provider.Settings
 
 /** Owns temporary system audio focus and restores the user's notification policy after playback. */
 class PerformanceModeController(context: Context) {
     private val appContext = context.applicationContext
     private val notificationManager = appContext.getSystemService(NotificationManager::class.java)
+    private val audioManager = appContext.getSystemService(AudioManager::class.java)
     private var previousFilter: Int? = null
     private var previousPolicy: NotificationManager.Policy? = null
 
@@ -35,6 +37,9 @@ class PerformanceModeController(context: Context) {
                 )
                 notificationManager.notificationPolicy = silentPolicy
                 notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                // Some OEM builds carry a mute bit across a DND transition. Do not
+                // change the user's level; only clear that transient mute state.
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0)
             }.isSuccess
             if (!activated) {
                 previousFilter = null
