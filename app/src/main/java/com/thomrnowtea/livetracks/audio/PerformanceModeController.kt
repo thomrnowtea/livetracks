@@ -13,13 +13,16 @@ class PerformanceModeController(context: Context) {
     private val appContext = context.applicationContext
     private val notificationManager = appContext.getSystemService(NotificationManager::class.java)
     private val audioManager = appContext.getSystemService(AudioManager::class.java)
-    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+    // A normal media gain keeps LiveTracks audible on OEM audio stacks that treat
+    // TRANSIENT_EXCLUSIVE as a call/alarm session. DND owns notification suppression.
+    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .build(),
         )
+        .setWillPauseWhenDucked(true)
         .setOnAudioFocusChangeListener { }
         .build()
     private var previousFilter: Int? = null

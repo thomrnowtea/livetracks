@@ -57,11 +57,11 @@ Each song is a synchronized container of stems. Every stem follows the same audi
 
 | Area | Capabilities |
 |---|---|
-| **Projects and playlist** | Multiple shows, reorderable songs, project and per-song masters, and safe Previous/Next navigation without autoplay. |
-| **Timeline** | Real waveforms, zoom down to 10 ms, draggable playhead, snapping, offsets, non-destructive split, extraction into a new song, and 50-step Undo/Redo. |
+| **Projects and playlist** | Multiple shows, reorderable songs, contextual project/song mixers, safe manual Previous/Next navigation, and continuous automatic play-through. |
+| **Timeline** | Persistently cached real waveforms, zoom down to 10 ms, draggable playhead, snapping, offsets, non-destructive split, extraction into a new song, and 50-step Undo/Redo. |
 | **Metronome and structure** | Per-song BPM and meter, inheritable defaults, optional musical grid, a click-reference stem, and Intro/Verse/Chorus/Bridge/Solo markers. |
-| **Mixing** | Per-stem fader, pan, mute, solo, MAIN/MONITOR sends, and meters; Single Mix and Stereo Split output modes. |
-| **Live operation** | A clean Stage Mode with large Previous, Play/Pause, Stop, and Next controls. Optional keep-screen-awake and exclusive performance settings. |
+| **Mixing** | Adaptive project, song, and stem consoles; per-stem fader, pan, mute, solo, MAIN/MONITOR sends, and meters; Single Mix and Stereo Split output modes. |
+| **Live operation** | A clean Stage Mode with large Previous, Play/Pause, Stop, and Next controls, double-tap playback, and automatic continuation. Optional keep-screen-awake and exclusive performance settings. |
 | **Audio files** | Native PCM/float WAV; MP3, AAC/M4A, FLAC, and OGG through available Android codecs; empty stems with an explicit duration are also supported. |
 | **Distribution** | Signed releases, SHA-256 checksums, and an in-app updater that validates version, package, certificate, and file integrity. |
 
@@ -104,7 +104,7 @@ The updater never installs silently. Before opening Android's package installer,
 
 Official APKs include 32-bit ARM (`armeabi-v7a`), 64-bit ARM (`arm64-v8a`), and emulator (`x86_64`) native code. Packaging support allows installation on those CPU families but is not a physical audio-hardware certification.
 
-The alpha release preloads audio into memory, with a maximum of 16 stems and 512 MB of decoded data per file. The smaller address space and memory budgets of many 32-bit devices make short, conservative test assets especially important. Decoder-worker ring buffers, foreground playback service support, physical Stereo Split/USB validation, auto-advance, and an expanded Live Mode remain pending.
+The alpha release preloads audio into memory, with a maximum of 16 stems and 512 MB of decoded data per file. The smaller address space and memory budgets of many 32-bit devices make short, conservative test assets especially important. Decoder-worker ring buffers, foreground playback service support, physical Stereo Split/USB validation, and an expanded Live Mode remain pending.
 
 [Implementation status](docs/STATUS.md) is the source of truth for completed and pending work. Physical compatibility claims belong in [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md); an emulator test is never presented as stage-hardware validation.
 

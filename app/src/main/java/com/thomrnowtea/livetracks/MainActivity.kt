@@ -21,6 +21,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -245,25 +247,25 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                 } else if (wide) Row(Modifier.fillMaxSize()) {
                     SideNavigation(state.workspace, viewModel::setWorkspace)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
-                        CompactContextBar(state, viewModel::setTrackWorkspace)
+                        CompactContextBar(state, viewModel)
                         WorkspaceContent(state, viewModel, addAudio, Modifier.weight(1f))
                         if (state.workspace != Workspace.SETTINGS) CompactTransport(
                             state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
                             viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
                             openTimeline = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.TIMELINE) },
                             openMixer = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.MIXER) },
-                            openMaster = { viewModel.setWorkspace(Workspace.MASTER) },
+                            openMetronome = { viewModel.setWorkspace(Workspace.METRONOME) },
                         )
                     }
                 } else Column(Modifier.fillMaxSize()) {
-                    CompactContextBar(state, viewModel::setTrackWorkspace)
+                    CompactContextBar(state, viewModel)
                     WorkspaceContent(state, viewModel, addAudio, Modifier.weight(1f))
                     if (state.workspace != Workspace.SETTINGS) CompactTransport(
                         state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
                         viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
                         openTimeline = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.TIMELINE) },
                         openMixer = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.MIXER) },
-                        openMaster = { viewModel.setWorkspace(Workspace.MASTER) },
+                        openMetronome = { viewModel.setWorkspace(Workspace.METRONOME) },
                     )
                     BottomNavigation(state.workspace, viewModel::setWorkspace)
                 }
@@ -289,7 +291,7 @@ private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: ()
                 Workspace.PROJECTS -> ProjectsScreen(state, vm)
                 Workspace.PLAYLIST -> PlaylistScreen(state, vm)
                 Workspace.TRACK -> TrackScreen(state, vm, addAudio)
-                Workspace.MASTER -> MasterScreen(state, vm)
+                Workspace.METRONOME -> MetronomeScreen(state, vm)
                 Workspace.SETTINGS -> SettingsScreen(state, vm)
             }
         }
@@ -353,19 +355,19 @@ private fun Workspace.iconRes() = when (this) {
     Workspace.PROJECTS -> R.drawable.ic_ui_projects
     Workspace.PLAYLIST -> R.drawable.ic_ui_playlist
     Workspace.TRACK -> R.drawable.ic_ui_track
-    Workspace.MASTER -> R.drawable.ic_ui_master
+    Workspace.METRONOME -> R.drawable.ic_ui_metronome
     Workspace.SETTINGS -> R.drawable.ic_ui_settings
 }
 @Composable private fun Workspace.railLabel() = when (this) {
     Workspace.PROJECTS -> tr("SHOWS", "SHOWS")
     Workspace.PLAYLIST -> tr("LISTA", "SETLIST")
     Workspace.TRACK -> tr("PISTA", "TRACK")
-    Workspace.MASTER -> "MASTER"
+    Workspace.METRONOME -> tr("CLICK", "CLICK")
     Workspace.SETTINGS -> tr("AJUSTES", "SETTINGS")
 }
 
 @Composable
-private fun CompactContextBar(state: MainUiState, setTrackWorkspace: (TrackWorkspace) -> Unit) {
+private fun CompactContextBar(state: MainUiState, vm: MainViewModel) {
     val project = state.selectedProject(); val master = state.selectedMaster()
     val metro = master?.metronome(project?.defaultMetronome ?: MetronomeSettings())
     BoxWithConstraints(Modifier.fillMaxWidth().height(52.dp).background(Color(0xFF1A1B1D))) {
@@ -381,17 +383,23 @@ private fun CompactContextBar(state: MainUiState, setTrackWorkspace: (TrackWorks
                     Text(master.name, Modifier.weight(1f, fill = false), color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            if (state.workspace == Workspace.TRACK && master != null) {
-                ContextModeButton(R.drawable.ic_ui_timeline, tr("Timeline", "Timeline"), state.trackWorkspace == TrackWorkspace.TIMELINE) {
-                    setTrackWorkspace(TrackWorkspace.TIMELINE)
-                }
+            if (state.workspace == Workspace.PROJECTS) {
+                ContextModeButton(R.drawable.ic_ui_projects, tr("Lista de proyectos", "Project list"), state.projectWorkspace == ProjectWorkspace.LIST) { vm.setProjectWorkspace(ProjectWorkspace.LIST) }
                 Spacer(Modifier.width(4.dp))
-                ContextModeButton(R.drawable.ic_ui_mixer, tr("Consola de mezcla", "Mix console"), state.trackWorkspace == TrackWorkspace.MIXER) {
-                    setTrackWorkspace(TrackWorkspace.MIXER)
-                }
+                ContextModeButton(R.drawable.ic_ui_mixer, tr("Mixer del proyecto", "Project mixer"), state.projectWorkspace == ProjectWorkspace.MIXER) { vm.setProjectWorkspace(ProjectWorkspace.MIXER) }
+                Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
+            } else if (state.workspace == Workspace.PLAYLIST && project != null) {
+                ContextModeButton(R.drawable.ic_ui_playlist, tr("Lista de pistas", "Track list"), state.playlistWorkspace == PlaylistWorkspace.LIST) { vm.setPlaylistWorkspace(PlaylistWorkspace.LIST) }
+                Spacer(Modifier.width(4.dp))
+                ContextModeButton(R.drawable.ic_ui_mixer, tr("Mixer de pista", "Track mixer"), state.playlistWorkspace == PlaylistWorkspace.MIXER) { vm.setPlaylistWorkspace(PlaylistWorkspace.MIXER) }
+                Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
+            } else if (state.workspace == Workspace.TRACK && master != null) {
+                ContextModeButton(R.drawable.ic_ui_timeline, tr("Timeline", "Timeline"), state.trackWorkspace == TrackWorkspace.TIMELINE) { vm.setTrackWorkspace(TrackWorkspace.TIMELINE) }
+                Spacer(Modifier.width(4.dp))
+                ContextModeButton(R.drawable.ic_ui_mixer, tr("Consola de stems", "Stem console"), state.trackWorkspace == TrackWorkspace.MIXER) { vm.setTrackWorkspace(TrackWorkspace.MIXER) }
                 Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
             }
-            if (!compact && state.workspace != Workspace.MASTER) {
+            if (!compact && state.workspace != Workspace.METRONOME) {
                 Text(metro?.let { "${formatBpm(it.bpm)} BPM  ·  ${it.numerator}/${it.denominator}" } ?: "— BPM", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 Spacer(Modifier.width(16.dp))
             }
@@ -470,13 +478,21 @@ private fun StatusPill(state: MainUiState) {
 }
 
 private fun Workspace.label() = when (this) {
-    Workspace.PROJECTS -> "PROYECTOS"; Workspace.PLAYLIST -> "PLAYLIST"; Workspace.TRACK -> "PISTA"; Workspace.MASTER -> "MASTER"; Workspace.SETTINGS -> "AJUSTES"
+    Workspace.PROJECTS -> "PROYECTOS"; Workspace.PLAYLIST -> "PLAYLIST"; Workspace.TRACK -> "PISTA"; Workspace.METRONOME -> "CLICK"; Workspace.SETTINGS -> "AJUSTES"
 }
 
 @Composable
 private fun ProjectsScreen(state: MainUiState, vm: MainViewModel) {
     var dialog by remember { mutableStateOf<ProjectDialog?>(null) }
     val selected = state.selectedProject()
+    if (state.projectWorkspace == ProjectWorkspace.MIXER) {
+        if (state.projects.isEmpty()) {
+            EmptyState(tr("SIN PROYECTO", "NO PROJECT"), tr("Selecciona un proyecto para abrir su mixer.", "Select a project to open its mixer."), tr("VER PROYECTOS", "VIEW PROJECTS")) {
+                vm.setProjectWorkspace(ProjectWorkspace.LIST)
+            }
+        } else ProjectBusMixer(state, vm)
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Proyectos", "Projects"), fontSize = 17.sp, fontWeight = FontWeight.Bold)
@@ -509,7 +525,7 @@ private fun ProjectsScreen(state: MainUiState, vm: MainViewModel) {
                             }
                             if (!compact) {
                                 ConsoleReadout("OUTPUT", "${formatDb(project.masterGainDb).replace(" dB", "")}  ${panLabel(project.masterPan)}", Mint)
-                                DawIconButton(DawIcon.MASTER, tr("Abrir master", "Open master")) { vm.selectProject(project.id); vm.setWorkspace(Workspace.MASTER) }
+                                DawIconButton(DawIcon.MIXER, tr("Abrir mixer del proyecto", "Open project mixer")) { vm.selectProject(project.id); vm.setProjectWorkspace(ProjectWorkspace.MIXER) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             DawIconButton(DawIcon.OPEN, tr("Abrir playlist", "Open setlist"), selected = true) { vm.selectProject(project.id); vm.setWorkspace(Workspace.PLAYLIST) }
@@ -542,6 +558,10 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
         ConsolePanel(Modifier.fillMaxSize()) { EmptyState(tr("SIN PROYECTO", "NO PROJECT"), tr("Selecciona o crea un proyecto antes de armar la playlist.", "Select or create a project before building the setlist."), tr("IR A PROYECTOS", "GO TO PROJECTS")) { vm.setWorkspace(Workspace.PROJECTS) } }
         return
     }
+    if (state.playlistWorkspace == PlaylistWorkspace.MIXER) {
+        PlaylistBusMixer(project, selected, vm)
+        return
+    }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxWidth().animateContentSize(tween(180))) {
             AnimatedContent(
@@ -568,7 +588,6 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
                     DawIconButton(DawIcon.MORE, tr("Más acciones de playlist", "More setlist actions")) { playlistMenuExpanded = true }
                     DropdownMenu(expanded = playlistMenuExpanded, onDismissRequest = { playlistMenuExpanded = false }) {
                         TimelineMenuItem(DawIcon.EDIT, tr("Renombrar pista", "Rename track"), selected != null) { playlistMenuExpanded = false; renameDialog = true }
-                        TimelineMenuItem(DawIcon.MASTER, tr("Abrir master", "Open master"), selected != null) { playlistMenuExpanded = false; vm.setWorkspace(Workspace.MASTER) }
                         TimelineMenuItem(DawIcon.DELETE, tr("Quitar pista master", "Remove master track"), selected != null, danger = true) {
                             playlistMenuExpanded = false
                             if (state.settings.confirmDestructiveActions) deleteDialog = true else vm.deleteSelectedMasterTrack()
@@ -596,7 +615,11 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
                     PlaylistRow(
                         index, item, project.defaultMetronome, item.id == state.selectedMasterTrackId,
                         select = { vm.selectMasterTrack(item.id) }, go = { vm.playMasterTrack(item.id) },
-                        open = { vm.selectMasterTrack(item.id); vm.setWorkspace(Workspace.TRACK) },
+                        open = {
+                            vm.selectMasterTrack(item.id)
+                            vm.setTrackWorkspace(TrackWorkspace.TIMELINE)
+                            vm.setWorkspace(Workspace.TRACK)
+                        },
                         moveUp = { vm.moveMasterTrack(index, -1) }, moveDown = { vm.moveMasterTrack(index, 1) },
                     )
                 }
@@ -612,7 +635,11 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
 private fun PlaylistRow(index: Int, item: MasterTrack, defaultMetronome: MetronomeSettings, active: Boolean, select: () -> Unit, go: () -> Unit, open: () -> Unit, moveUp: () -> Unit, moveDown: () -> Unit) {
     val metro = item.metronome(defaultMetronome)
     val playLabel = tr("Reproducir pista", "Play track")
-    Surface(onClick = select, color = if (active) Color(0xFF1B2730) else Color(0xFF121920), shape = RoundedCornerShape(7.dp)) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = select, onDoubleClick = open),
+        color = if (active) Color(0xFF1B2730) else Color(0xFF121920),
+        shape = RoundedCornerShape(7.dp),
+    ) {
         BoxWithConstraints {
             val compact = maxWidth < 600.dp
             Row(Modifier.fillMaxWidth().height(if (compact) 68.dp else 58.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -660,7 +687,15 @@ private fun PerformancePlaylistScreen(state: MainUiState, vm: MainViewModel) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(project.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(tr("MODO ESCENARIO", "STAGE MODE") + "  ·  ${selectedIndex + 1}/${project.playlist.size}", color = if (live) Mint else Amber, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text(
+                        tr("MODO ESCENARIO · DOBLE TOQUE REPRODUCE", "STAGE MODE · DOUBLE TAP PLAYS") + "  ·  ${selectedIndex + 1}/${project.playlist.size}",
+                        color = if (live) Mint else Amber,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 Box(Modifier.size(8.dp).background(if (live) Mint else Amber, CircleShape))
                 Spacer(Modifier.width(8.dp))
@@ -687,8 +722,10 @@ private fun PerformanceCueList(project: Project, selected: MasterTrack?, live: B
                 val active = item.id == selected?.id
                 val metro = item.metronome(project.defaultMetronome)
                 Surface(
-                    onClick = { if (!active) vm.selectMasterTrack(item.id) },
-                    modifier = Modifier.fillMaxWidth().height(if (wide) 76.dp else 72.dp),
+                    modifier = Modifier.fillMaxWidth().height(if (wide) 76.dp else 72.dp).combinedClickable(
+                        onClick = { if (!active) vm.selectMasterTrack(item.id) },
+                        onDoubleClick = { vm.playMasterTrack(item.id) },
+                    ),
                     color = if (active) Blue.copy(alpha = .27f) else Color(0xFF151A1F),
                     border = BorderStroke(if (active) 2.dp else 1.dp, if (active) Mint else Border.copy(alpha = .45f)),
                     shape = RoundedCornerShape(10.dp),
@@ -1482,6 +1519,182 @@ private fun MixerConsole(tracks: List<MixerTrackUi>, vm: MainViewModel) {
     }
 }
 
+private data class BusChannelUi(
+    val id: String,
+    val name: String,
+    val detail: String,
+    val gainDb: Float,
+    val pan: Float,
+)
+
+@Composable
+private fun ProjectBusMixer(state: MainUiState, vm: MainViewModel) {
+    BusMixerConsole(
+        channels = state.projects.map { project ->
+            BusChannelUi(
+                id = project.id,
+                name = project.name,
+                detail = "${project.playlist.size} ${tr("PISTAS", "TRACKS")} · ${project.playlist.sumOf { it.tracks.size }} STEMS",
+                gainDb = project.masterGainDb,
+                pan = project.masterPan,
+            )
+        },
+        selectedId = state.selectedProjectId,
+        select = vm::selectProject,
+        setGain = vm::setProjectGain,
+        setPan = vm::setProjectPan,
+    )
+}
+
+@Composable
+private fun PlaylistBusMixer(project: Project, selected: MasterTrack?, vm: MainViewModel) {
+    BusMixerConsole(
+        channels = project.playlist.map { master ->
+            BusChannelUi(
+                id = master.id,
+                name = master.name,
+                detail = "${master.tracks.size} STEMS · ${timeText(master.durationSeconds())}",
+                gainDb = master.gainDb,
+                pan = master.pan,
+            )
+        },
+        selectedId = selected?.id,
+        select = vm::selectMasterTrack,
+        setGain = vm::setMasterGain,
+        setPan = vm::setMasterPan,
+    )
+}
+
+@Composable
+private fun BusMixerConsole(
+    channels: List<BusChannelUi>,
+    selectedId: String?,
+    select: (String) -> Unit,
+    setGain: (String, Float) -> Unit,
+    setPan: (String, Float) -> Unit,
+) {
+    val configuration = LocalConfiguration.current
+    val landscape = configuration.screenWidthDp > configuration.screenHeightDp
+    Surface(Modifier.fillMaxSize(), color = Bg, shape = RoundedCornerShape(2.dp)) {
+        if (landscape) {
+            LazyColumn(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
+                    LandscapeBusChannel(index, channel, channel.id == selectedId, select, setGain, setPan)
+                }
+            }
+        } else {
+            LazyRow(Modifier.fillMaxSize().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                itemsIndexed(channels, key = { _, channel -> channel.id }) { index, channel ->
+                    PortraitBusChannel(index, channel, channel.id == selectedId, select, setGain, setPan)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LandscapeBusChannel(
+    index: Int,
+    channel: BusChannelUi,
+    selected: Boolean,
+    select: (String) -> Unit,
+    setGain: (String, Float) -> Unit,
+    setPan: (String, Float) -> Unit,
+) {
+    val channelColor = busChannelColor(index)
+    Surface(
+        Modifier.fillMaxWidth().height(142.dp).clickable { select(channel.id) },
+        color = if (index % 2 == 0) Panel else Color(0xFF1C1E20),
+        shape = RoundedCornerShape(2.dp),
+        border = BorderStroke(1.dp, if (selected) channelColor else Border),
+    ) {
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.width(5.dp).fillMaxHeight().background(channelColor))
+            Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                Row(Modifier.fillMaxWidth().height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(channel.name, color = TextMain, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(channel.detail, color = TextMuted, fontSize = 9.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+                    }
+                    Text((index + 1).toString().padStart(2, '0'), color = if (selected) channelColor else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                HorizontalDivider(color = Border)
+                Row(
+                    Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        LabelValue(tr("NIVEL", "LEVEL"), formatDb(channel.gainDb), channelColor)
+                        HorizontalConsoleFader(channel.gainDb, { setGain(channel.id, it) }, channelColor, Modifier.fillMaxWidth())
+                    }
+                    Column(Modifier.width(82.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("PAN", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            RotaryKnob(channel.pan, -1f..1f, { setPan(channel.id, it) }, channelColor, Modifier.size(48.dp))
+                            Text(panLabel(channel.pan), color = channelColor, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PortraitBusChannel(
+    index: Int,
+    channel: BusChannelUi,
+    selected: Boolean,
+    select: (String) -> Unit,
+    setGain: (String, Float) -> Unit,
+    setPan: (String, Float) -> Unit,
+) {
+    val channelColor = busChannelColor(index)
+    Surface(
+        Modifier.width(208.dp).fillMaxHeight().clickable { select(channel.id) },
+        color = if (index % 2 == 0) Panel else Color(0xFF1C1E20),
+        shape = RoundedCornerShape(2.dp),
+        border = BorderStroke(1.dp, if (selected) channelColor else Border),
+    ) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.fillMaxWidth().height(3.dp).background(channelColor))
+            Row(Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(channel.name, Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text((index + 1).toString().padStart(2, '0'), color = if (selected) channelColor else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(channel.detail, Modifier.fillMaxWidth().padding(horizontal = 4.dp), color = TextMuted, fontSize = 8.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            HorizontalDivider(Modifier.padding(top = 4.dp), color = Border)
+            VerticalFader(channel.gainDb, { setGain(channel.id, it) }, channelColor, Modifier.weight(1f).fillMaxWidth())
+            Text(formatDb(channel.gainDb), color = channelColor, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth().height(62.dp), verticalAlignment = Alignment.CenterVertically) {
+                RotaryKnob(channel.pan, -1f..1f, { setPan(channel.id, it) }, channelColor, Modifier.size(52.dp))
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("PAN", color = TextMuted, fontSize = 7.sp, fontWeight = FontWeight.SemiBold)
+                    Text(panLabel(channel.pan), color = TextMain, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Text(
+                if (selected) tr("SELECCIONADO", "SELECTED") else tr("TOCAR PARA SELECCIONAR", "TAP TO SELECT"),
+                color = if (selected) channelColor else TextMuted,
+                fontSize = 7.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Box(Modifier.fillMaxWidth().height(4.dp).background(channelColor))
+        }
+    }
+}
+
+private fun busChannelColor(index: Int): Color = listOf(
+    Color(0xFF43D3B3),
+    Color(0xFF5C8DFF),
+    Color(0xFFB778FF),
+    Color(0xFFF4B64A),
+    Color(0xFFE95A64),
+    Color(0xFF55C98A),
+)[index % 6]
+
 @Composable
 private fun ChannelStrip(index: Int, track: MixerTrackUi, gain: (Float) -> Unit, pan: (Float) -> Unit, mute: () -> Unit, solo: () -> Unit) {
     val stripColor = Color(track.colorArgb)
@@ -1718,29 +1931,62 @@ private fun KnobControl(
 }
 
 @Composable
-private fun MasterScreen(state: MainUiState, vm: MainViewModel) {
-    var section by rememberSaveable { mutableStateOf(MasterSection.PROJECT) }
+private fun MetronomeScreen(state: MainUiState, vm: MainViewModel) {
     val project = state.selectedProject(); val master = state.selectedMaster()
     if (project == null) {
         ConsolePanel(Modifier.fillMaxSize()) { EmptyState(
             tr("SIN PROYECTO", "NO PROJECT"),
-            tr("El master pertenece a un proyecto.", "Master output belongs to a project."),
+            tr("El click y el ruteo pertenecen a un proyecto.", "Click and routing belong to a project."),
             tr("IR A PROYECTOS", "GO TO PROJECTS"),
         ) { vm.setWorkspace(Workspace.PROJECTS) } }; return
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val landscape = maxWidth >= 700.dp && maxWidth > maxHeight
-        if (landscape) {
-            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MasterSectionContent(section, project, master, state, vm, Modifier.weight(1f).fillMaxHeight())
-                MasterSectionRail(section, { section = it }, Modifier.width(60.dp).fillMaxHeight())
+        val wide = maxWidth >= 700.dp && maxWidth > maxHeight
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
+        ) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(44.dp).background(Amber.copy(alpha = .12f), CircleShape), contentAlignment = Alignment.Center) {
+                        VectorIcon(R.drawable.ic_ui_metronome, null, Amber, Modifier.size(25.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(tr("CLICK Y TEMPO", "CLICK AND TEMPO"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(master?.name ?: tr("Selecciona una pista", "Select a track"), color = TextMuted, fontSize = 10.sp)
+                    }
+                }
             }
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                MasterSectionStrip(section, { section = it }, Modifier.fillMaxWidth())
-                Spacer(Modifier.height(4.dp))
-                MasterSectionContent(section, project, master, state, vm, Modifier.weight(1f).fillMaxWidth())
+            item {
+                MasterMetronomePanel(
+                    project,
+                    master,
+                    vm,
+                    Modifier.fillMaxWidth().height(if (wide) 430.dp else 740.dp),
+                )
             }
+            item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    VectorIcon(R.drawable.ic_ui_routing, null, Mint, Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(tr("RUTEO DE SALIDA", "OUTPUT ROUTING"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(tr("MAIN, monitor y hardware actual", "MAIN, monitor and current hardware"), color = TextMuted, fontSize = 10.sp)
+                    }
+                }
+            }
+            if (wide) item {
+                Row(Modifier.fillMaxWidth().height(168.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.weight(1f))
+                    RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated in monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.weight(1f))
+                }
+            } else {
+                item { RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.fillMaxWidth().height(148.dp)) }
+                item { RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated in monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.fillMaxWidth().height(148.dp)) }
+            }
+            item { RoutingHardwareModule(state, vm, Modifier.fillMaxWidth().height(if (wide) 84.dp else 112.dp)) }
         }
     }
 }
@@ -1878,9 +2124,9 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
 }
 
 @Composable
-private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel) {
+private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel, modifier: Modifier = Modifier.fillMaxSize()) {
     var projectTemplate by rememberSaveable(master?.id) { mutableStateOf(false) }
-    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 4.dp)) {
+    BoxWithConstraints(modifier.padding(top = 4.dp)) {
         val wide = maxWidth >= 680.dp
         if (wide) {
             val inherited = master?.metronomeOverride == null
@@ -2104,7 +2350,7 @@ private fun MasterTrackPanel(master: MasterTrack?, vm: MainViewModel) {
         tr("SIN PISTA SELECCIONADA", "NO TRACK SELECTED"),
         tr("Selecciona una pista de la playlist.", "Select a track from the playlist."),
         tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
-    ) { vm.setWorkspace(Workspace.PLAYLIST) }; return }
+    ) { vm.setWorkspace(Workspace.PLAYLIST); vm.setPlaylistWorkspace(PlaylistWorkspace.LIST) }; return }
     val summaryRows = listOf(
         tr("Stems", "Stems") to master.tracks.size.toString(),
         tr("Duración", "Duration") to timeText(master.durationSeconds()),
@@ -2156,7 +2402,7 @@ private fun MissingMasterMetronome(vm: MainViewModel) {
         tr("SIN PISTA SELECCIONADA", "NO TRACK SELECTED"),
         tr("El metrónomo siempre pertenece a una pista master.", "The metronome always belongs to a master track."),
         tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
-    ) { vm.setWorkspace(Workspace.PLAYLIST) }
+    ) { vm.setWorkspace(Workspace.PLAYLIST); vm.setPlaylistWorkspace(PlaylistWorkspace.LIST) }
 }
 
 @Composable
@@ -2989,7 +3235,7 @@ private fun CompactTransport(
     panic: () -> Unit,
     openTimeline: () -> Unit,
     openMixer: () -> Unit,
-    openMaster: () -> Unit,
+    openMetronome: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -3003,12 +3249,46 @@ private fun CompactTransport(
     val total = maxOf(engineDuration, master?.durationSeconds() ?: 0.0)
     val position = if (state.diagnostics.durationFrames > 0) state.diagnostics.renderedFrames.toDouble() / rate else 0.0
     val fraction = if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f
-    val transportHeight by animateDpAsState(if (expanded) 94.dp else 60.dp, tween(180), label = "transportHeight")
     Surface(color = Color(0xFF0C1116)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(transportHeight)) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
             val compact = maxWidth < 600.dp
-            Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+            val transportHeight by animateDpAsState(if (expanded) 94.dp else if (compact) 82.dp else 60.dp, tween(180), label = "transportHeight")
+            Column(Modifier.fillMaxWidth().height(transportHeight).padding(horizontal = 8.dp, vertical = 4.dp)) {
                 if (!expanded) {
+                    if (compact) {
+                        Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            TransportIconButton(R.drawable.ic_ui_previous, tr("Pista anterior", "Previous track"), canPrevious, previous)
+                            Spacer(Modifier.width(4.dp))
+                            Button(onClick = playPause, enabled = !state.openingOutput, modifier = Modifier.size(48.dp), contentPadding = PaddingValues(0.dp), colors = ButtonDefaults.buttonColors(containerColor = if (state.diagnostics.toneEnabled) Amber else Mint, contentColor = Bg), shape = CircleShape) {
+                                VectorIcon(if (state.diagnostics.toneEnabled) R.drawable.ic_ui_pause else R.drawable.ic_ui_play, tr("Reproducir o pausar", "Play or pause"), Bg, Modifier.size(25.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            TransportIconButton(R.drawable.ic_ui_next, tr("Pista siguiente", "Next track"), canNext, next)
+                            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                                Text(master?.name ?: tr("Sin pista", "No track"), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${timeText(position)} / ${timeText(total)}", color = Mint, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                            Box {
+                                TransportIconButton(R.drawable.ic_ui_more, tr("Más opciones de transporte", "More transport options"), true) { menuExpanded = true }
+                                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                    TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
+                                    TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
+                                    TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
+                                    TimelineMenuItem(DawIcon.METRONOME, tr("Abrir click y ruteo", "Open click and routing"), project != null) { menuExpanded = false; openMetronome() }
+                                    TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
+                                }
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            TransportIconButton(R.drawable.ic_ui_arrow_up, tr("Expandir transporte", "Expand transport"), true) { expanded = true }
+                        }
+                        Slider(
+                            fraction,
+                            seek,
+                            enabled = state.diagnostics.durationFrames > 0,
+                            colors = SliderDefaults.colors(thumbColor = Mint, activeTrackColor = Mint, inactiveTrackColor = Border),
+                            modifier = Modifier.fillMaxWidth().height(24.dp),
+                        )
+                    } else {
                     Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                         TransportIconButton(R.drawable.ic_ui_previous, tr("Pista anterior", "Previous track"), canPrevious, previous)
                         Spacer(Modifier.width(4.dp))
@@ -3027,12 +3307,13 @@ private fun CompactTransport(
                                 TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
                                 TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
                                 TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
-                                TimelineMenuItem(DawIcon.MASTER, tr("Abrir master", "Open master"), project != null) { menuExpanded = false; openMaster() }
+                                TimelineMenuItem(DawIcon.METRONOME, tr("Abrir click y ruteo", "Open click and routing"), project != null) { menuExpanded = false; openMetronome() }
                                 TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
                             }
                         }
                         Spacer(Modifier.width(4.dp))
                         TransportIconButton(R.drawable.ic_ui_arrow_up, tr("Expandir transporte", "Expand transport"), true) { expanded = true }
+                    }
                     }
                 } else {
                 Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -3058,7 +3339,7 @@ private fun CompactTransport(
                             if (compact) TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
                             TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
                             TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
-                            TimelineMenuItem(DawIcon.MASTER, tr("Abrir master", "Open master"), project != null) { menuExpanded = false; openMaster() }
+                            TimelineMenuItem(DawIcon.METRONOME, tr("Abrir click y ruteo", "Open click and routing"), project != null) { menuExpanded = false; openMetronome() }
                             TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
                         }
                     }

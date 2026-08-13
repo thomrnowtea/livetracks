@@ -4,6 +4,25 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## [0.2.0-alpha.5] - 2026-08-13
+
+### Added
+
+- Added contextual project and playlist mixers using the same adaptive console language as stem mixing: vertical channel strips with horizontal scrolling in portrait, and full-width horizontal channels stacked vertically in landscape.
+- Added editable-playlist double tap to open a song Timeline, Stage Mode double tap to play immediately, and automatic play-through to the next playlist item after natural completion.
+- Added a versioned persistent waveform cache validated against source size and modification time. Cached envelopes for every project are preloaded before the first UI state, avoiding repeated analysis on normal relaunches.
+
+### Changed
+
+- Replaced the global Master workspace with a unified Click and Routing workspace; project, playlist-item, and stem mixing now live beside the corresponding list or Timeline instead of behind a second hierarchy.
+- Bus channels are selected by touching the strip itself and use a colored border for feedback, removing the ambiguous action icon beside PAN.
+- Reworked the collapsed portrait transport around a dominant Play control and a separate full-width progress row.
+
+### Fixed
+
+- Continuous show playback no longer pauses after advancing to the next playlist item.
+- Exclusive Performance Mode now requests normal media audio focus while Do Not Disturb handles interruptions, avoiding OEM treatment of the app as a transient call/alarm source.
+
 ## [0.2.0-alpha.4] - 2026-08-13
 
 ### Fixed

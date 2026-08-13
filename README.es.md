@@ -57,11 +57,11 @@ Cada canción es un contenedor sincronizado de stems. Todos parten del mismo rel
 
 | Área | Capacidades |
 |---|---|
-| **Proyectos y playlist** | Múltiples shows, canciones reordenables, master de proyecto y master por canción, anterior/siguiente sin autoplay. |
-| **Timeline** | Ondas reales, zoom hasta 10 ms, playhead arrastrable, snapping, offsets, split no destructivo, extracción a una canción nueva y Undo/Redo de 50 pasos. |
+| **Proyectos y playlist** | Múltiples shows, canciones reordenables, mixers contextuales de proyecto/canción, anterior/siguiente manual seguro y reproducción continua automática. |
+| **Timeline** | Ondas reales con caché persistente, zoom hasta 10 ms, playhead arrastrable, snapping, offsets, split no destructivo, extracción a una canción nueva y Undo/Redo de 50 pasos. |
 | **Metrónomo y estructura** | BPM y compás por canción, defaults heredables, grilla musical activable, stem de referencia de click y marcadores Intro/Verso/Estribillo/Puente/Solo. |
-| **Mezcla** | Fader, paneo, mute, solo, MAIN/MONITOR y medidores por stem; salida Single Mix o Stereo Split. |
-| **Operación en vivo** | Modo Escenario con playlist limpia y controles grandes de anterior, Play/Pause, Stop y siguiente. Pantalla activa y modo exclusivo opcionales. |
+| **Mezcla** | Consolas adaptativas para proyectos, canciones y stems; fader, paneo, mute, solo, MAIN/MONITOR y medidores por stem; salida Single Mix o Stereo Split. |
+| **Operación en vivo** | Modo Escenario con playlist limpia, controles grandes, reproducción por doble toque y continuación automática. Pantalla activa y modo exclusivo opcionales. |
 | **Archivos** | WAV PCM/float nativo; MP3, AAC/M4A, FLAC y OGG mediante los codecs disponibles en Android; también admite stems vacíos con duración definida. |
 | **Distribución** | Releases firmadas, checksum SHA-256 y actualizador integrado con validación de versión, paquete, certificado y archivo. |
 
@@ -104,7 +104,7 @@ El actualizador no instala silenciosamente. Antes de abrir el instalador de Andr
 
 Los APK oficiales incluyen código nativo para ARM de 32 bits (`armeabi-v7a`), ARM de 64 bits (`arm64-v8a`) y emulador (`x86_64`). El soporte de empaquetado permite instalar en esas familias de CPU, pero no certifica el hardware de audio de un dispositivo físico.
 
-La versión alpha precarga cada archivo en memoria, con un máximo de 16 stems y 512 MB decodificados por archivo. El menor espacio de direcciones y la memoria disponible en muchos equipos de 32 bits hacen especialmente importante probar primero con archivos cortos y conservadores. El streaming por ring buffers, el servicio de reproducción foreground, la validación física de Stereo Split/USB, el autoavance y el Live Mode ampliado siguen pendientes.
+La versión alpha precarga cada archivo en memoria, con un máximo de 16 stems y 512 MB decodificados por archivo. El menor espacio de direcciones y la memoria disponible en muchos equipos de 32 bits hacen especialmente importante probar primero con archivos cortos y conservadores. El streaming por ring buffers, el servicio de reproducción foreground, la validación física de Stereo Split/USB y el Live Mode ampliado siguen pendientes.
 
 La fuente de verdad sobre lo implementado es [Implementation status](docs/STATUS.md). Las afirmaciones de compatibilidad física viven en [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md); una prueba en emulador no se presenta como validación de escenario.
 

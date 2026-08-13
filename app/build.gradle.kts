@@ -18,8 +18,8 @@ android {
         applicationId = "com.thomrnowtea.livetracks"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 5
-        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0-alpha.4"
+        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 6
+        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0-alpha.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
