@@ -6,7 +6,7 @@ composeBom = "2025.05.01"
 lifecycle = "2.8.7"
 coroutines = "1.10.2"
 core = "1.13.1"
-oboe = "1.9.3"
+oboe = "1.10.0"
 junit = "4.13.2"
 
 [libraries]
