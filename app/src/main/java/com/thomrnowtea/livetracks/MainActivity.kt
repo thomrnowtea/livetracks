@@ -892,7 +892,9 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center,
-                                    modifier = Modifier.width(40.dp),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.width(56.dp),
                                 )
                                 DawIconButton(DawIcon.ZOOM_OUT, tr("Alejar", "Zoom out"), enabled = zoomIndex > 0) {
                                     zoomIndex = (zoomIndex - 1).coerceAtLeast(0)
