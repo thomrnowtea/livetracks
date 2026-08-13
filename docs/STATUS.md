@@ -30,7 +30,7 @@ Last updated: 2026-08-13
 - Optional exclusive performance mode with transient-exclusive audio focus, temporary Do Not Disturb policy, automatic restoration, and a separate keep-screen-awake switch.
 - Android MediaCodec preprocessing for device-supported MP3, AAC/M4A, FLAC and OGG sources; conversion occurs before playback and never in the realtime callback.
 - Two-stage master configuration: project volume/pan plus selected playlist-item volume/pan.
-- Per-master-track transport-locked metronome with an inheritable project template and adaptive project/custom editing cards. A single persisted stem may replace the native click; designation converts it to CLICK, forces MAIN to negative infinity, and keeps BPM/meter available for the grid, snapping, and cues. There is no global playback metronome.
+- Per-master-track transport-locked metronome with an inheritable project template, adaptive project/custom editing cards, directly writable 20–400 decimal BPM, and fully custom 1–32 / 1–32 meter values. A single persisted stem may replace the native click; designation converts it to CLICK, forces MAIN to negative infinity, and keeps BPM/meter available for the grid, snapping, and cues. There is no global playback metronome.
 - Local verification: unit tests passed; `armeabi-v7a`, `arm64-v8a`, and `x86_64` native builds and APK packaging passed; real WAV envelopes and active x86_64 emulator audio output passed in portrait and landscape.
 - Release verification: the owner completed the in-app signed upgrade from `v0.1.0-alpha.1` to `v0.2.0-alpha.1` on a physical Android phone. The device model is intentionally not recorded in the public repository because this result validates the updater flow, not audio-hardware compatibility.
 

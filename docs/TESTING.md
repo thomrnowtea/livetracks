@@ -11,6 +11,8 @@ $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 
 Unit tests cover decibel conversion, pan-law endpoints/center, MAIN downmix headroom, click/cue routing defaults, click-reference safety, beat/bar spacing, duration selection, safe metronome defaults, schema migration/rejection through v6, marker/grid/reference persistence, non-destructive splits, independent-master extraction, marker lead timing, real PCM waveform analysis, and update version-code policy. The ABI gate checks that `liblivetracks_audio.so`, `liboboe.so`, and `libc++_shared.so` are packaged for `armeabi-v7a`, `arm64-v8a`, and `x86_64`. A successful build verifies Kotlin/JNI/CMake linkage; it does not verify audible output.
 
+For metronome editing, type a decimal value such as `137.5` BPM and a non-preset meter such as `7/10`. Confirm the same exact values drive the beat grid, survive relaunch, and remain editable in both project-template and selected-song modes. Values outside BPM 20–400 or meter parts 1–32 must never reach persistence or the native engine.
+
 ## Emulator
 
 Use an API 31 or newer emulator for navigation, state restoration, persistence, route-state UI, system-picker imports, and real-WAV smoke tests. Emulator audio does not validate latency, USB routing, multichannel output, drift, or long-run stability.

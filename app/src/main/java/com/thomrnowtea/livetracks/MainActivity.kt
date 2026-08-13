@@ -45,11 +45,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -95,13 +99,16 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -112,8 +119,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -134,6 +144,7 @@ import com.thomrnowtea.livetracks.domain.TimelineMarker
 import com.thomrnowtea.livetracks.domain.TimelineMarkerKind
 import com.thomrnowtea.livetracks.domain.UpdateFailure
 import com.thomrnowtea.livetracks.data.AppLanguage
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.floor
@@ -367,8 +378,8 @@ private fun CompactContextBar(state: MainUiState, setTrackWorkspace: (TrackWorks
                 }
                 Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
             }
-            if (!compact) {
-                Text(metro?.let { "${it.bpm.roundToInt()} BPM  ·  ${it.numerator}/${it.denominator}" } ?: "— BPM", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            if (!compact && state.workspace != Workspace.MASTER) {
+                Text(metro?.let { "${formatBpm(it.bpm)} BPM  ·  ${it.numerator}/${it.denominator}" } ?: "— BPM", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 Spacer(Modifier.width(16.dp))
             }
             val live = state.diagnostics.toneEnabled
@@ -410,7 +421,7 @@ private fun AppHeader(state: MainUiState, select: (Workspace) -> Unit) {
                 Text(master?.name ?: tr("Selecciona una pista", "Select a track"), fontSize = 10.sp, color = TextMuted, maxLines = 1)
             }
             val metro = master?.metronome(project?.defaultMetronome ?: MetronomeSettings())
-            HeaderValue("BPM", metro?.bpm?.let { "%.0f".format(it) } ?: "—")
+            HeaderValue("BPM", metro?.bpm?.let(::formatBpm) ?: "—")
             HeaderValue("COMPAS", metro?.let { "${it.numerator}/${it.denominator}" } ?: "—")
             StatusPill(state)
         }
@@ -674,7 +685,7 @@ private fun PerformanceCueList(project: Project, selected: MasterTrack?, live: B
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(item.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${timeText(item.durationSeconds())}  ·  ${metro.bpm.roundToInt()} BPM  ·  ${metro.numerator}/${metro.denominator}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                            Text("${timeText(item.durationSeconds())}  ·  ${formatBpm(metro.bpm)} BPM  ·  ${metro.numerator}/${metro.denominator}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                         }
                         if (active) {
                             Box(Modifier.size(8.dp).background(if (live) Mint else Amber, CircleShape))
@@ -1662,7 +1673,7 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
                 Spacer(Modifier.height(12.dp))
                 SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
                 SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
-                SummaryLine(tr("Plantilla de click", "Click template"), "${project.defaultMetronome.bpm.roundToInt()} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}")
+                SummaryLine(tr("Plantilla de click", "Click template"), "${formatBpm(project.defaultMetronome.bpm)} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}")
             }
         }
     }
@@ -1671,23 +1682,98 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
 @Composable
 private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel) {
     var projectTemplate by rememberSaveable(master?.id) { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(top = 4.dp)) {
-        Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(9.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            MasterScopeButton(tr("Plantilla del proyecto", "Project template"), projectTemplate, Modifier.weight(1f)) { projectTemplate = true }
-            MasterScopeButton(tr("Canción seleccionada", "Selected song"), !projectTemplate, Modifier.weight(1f)) { projectTemplate = false }
+    BoxWithConstraints(Modifier.fillMaxSize().padding(top = 4.dp)) {
+        val wide = maxWidth >= 680.dp
+        if (wide) {
+            val inherited = master?.metronomeOverride == null
+            val clickReference = master?.clickReferenceTrack()
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetronomeWorkspaceRail(
+                    projectTemplate = projectTemplate,
+                    inherited = inherited,
+                    hasSelectedSong = master != null,
+                    clickReferenceName = clickReference?.name,
+                    selectTemplate = { projectTemplate = true },
+                    selectInherited = {
+                        projectTemplate = false
+                        vm.setMasterUsesDefault(true)
+                    },
+                    selectCustom = {
+                        projectTemplate = false
+                        vm.setMasterUsesDefault(false)
+                    },
+                    modifier = Modifier.width(170.dp).fillMaxHeight(),
+                )
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    if (projectTemplate) {
+                        DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
+                    } else if (master == null) {
+                        MetronomePanel(project, null, vm)
+                    } else {
+                        MetronomeControlCard(
+                            value = master.metronome(project.defaultMetronome),
+                            enabled = !inherited,
+                            usingReferenceStem = clickReference != null,
+                            vm = vm,
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(9.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MasterScopeButton(tr("Plantilla del proyecto", "Project template"), projectTemplate, Modifier.weight(1f)) { projectTemplate = true }
+                    MasterScopeButton(tr("Canción seleccionada", "Selected song"), !projectTemplate, Modifier.weight(1f)) { projectTemplate = false }
+                }
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    AnimatedContent(
+                        targetState = projectTemplate,
+                        transitionSpec = {
+                            (fadeIn(tween(160)) + slideInVertically(tween(170)) { it / 10 }) togetherWith fadeOut(tween(100))
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        label = "metronomeScope",
+                    ) { template ->
+                        if (template) DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
+                        else MetronomePanel(project, master, vm)
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AnimatedContent(
-                targetState = projectTemplate,
-                transitionSpec = {
-                    (fadeIn(tween(160)) + slideInVertically(tween(170)) { it / 10 }) togetherWith fadeOut(tween(100))
-                },
-                modifier = Modifier.fillMaxSize(),
-                label = "metronomeScope",
-            ) { template ->
-                if (template) DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
-                else MetronomePanel(project, master, vm)
+    }
+}
+
+@Composable
+private fun MetronomeWorkspaceRail(
+    projectTemplate: Boolean,
+    inherited: Boolean,
+    hasSelectedSong: Boolean,
+    clickReferenceName: String?,
+    selectTemplate: () -> Unit,
+    selectInherited: () -> Unit,
+    selectCustom: () -> Unit,
+    modifier: Modifier,
+) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            ConsoleSectionLabel(tr("RELOJ", "CLOCK"), Mint)
+            CompactMetronomeModeChoice(tr("PLANTILLA", "TEMPLATE"), projectTemplate, click = selectTemplate)
+            CompactMetronomeModeChoice(
+                tr("HEREDA", "INHERITS"),
+                !projectTemplate && inherited,
+                enabled = hasSelectedSong,
+                click = selectInherited,
+            )
+            CompactMetronomeModeChoice(
+                tr("PERSONALIZADO", "CUSTOM"),
+                !projectTemplate && !inherited,
+                enabled = hasSelectedSong,
+                click = selectCustom,
+            )
+            clickReferenceName?.let {
+                Text(it, color = Amber, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -1797,30 +1883,35 @@ private fun MetronomePanel(project: Project, master: MasterTrack?, vm: MainViewM
     val inherited = master.metronomeOverride == null
     val value = master.metronome(project.defaultMetronome)
     val clickReference = master.clickReferenceTrack()
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = maxWidth < 680.dp
-        if (compact) Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            MetronomeModeCard(master, inherited, clickReference?.name, vm, Modifier.fillMaxWidth())
-            MetronomeControlCard(value, !inherited, clickReference != null, vm, Modifier.fillMaxWidth())
-            Spacer(Modifier.height(8.dp))
-        } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetronomeModeCard(
-                master,
-                inherited,
-                clickReference?.name,
-                vm,
-                Modifier.width(280.dp).fillMaxHeight().verticalScroll(rememberScrollState()),
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        MetronomeModeCard(master, inherited, clickReference?.name, vm, Modifier.fillMaxWidth())
+        MetronomeControlCard(value, !inherited, clickReference != null, vm, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun CompactMetronomeModeChoice(label: String, selected: Boolean, enabled: Boolean = true, click: () -> Unit) {
+    Surface(
+        onClick = click,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().height(36.dp),
+        color = if (selected) Blue.copy(alpha = .2f) else Raised,
+        shape = RoundedCornerShape(7.dp),
+        border = BorderStroke(1.dp, if (selected) Mint else Border),
+    ) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(12.dp).then(
+                    if (selected) Modifier.background(Mint, CircleShape)
+                    else Modifier.border(1.dp, TextMuted, CircleShape),
+                ),
             )
-            MetronomeControlCard(
-                value,
-                !inherited,
-                clickReference != null,
-                vm,
-                Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
-            )
+            Spacer(Modifier.width(8.dp))
+            Text(label, color = if (!enabled) TextMuted.copy(alpha = .4f) else if (selected) TextMain else TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
@@ -1904,8 +1995,9 @@ private fun MetronomeControlCard(
     vm: MainViewModel,
     modifier: Modifier,
 ) {
+    val landscape = LocalConfiguration.current.run { screenWidthDp > screenHeightDp }
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
-        Column(Modifier.padding(16.dp)) {
+        Column(Modifier.padding(if (landscape) 6.dp else 16.dp)) {
             if (usingReferenceStem) {
                 SettingsNotice(tr(
                     "El stem de referencia reemplaza el click nativo y sale sólo por MONITOR. BPM y compás siguen controlando la grilla y las marcas.",
@@ -1926,146 +2018,424 @@ private fun MetronomeControls(
     update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val wide = maxWidth >= 560.dp
-        val tempo: @Composable (Modifier) -> Unit = { modifier ->
-            MetronomeTempoControl(value, enabled, update, modifier)
-        }
-        val meter: @Composable (Modifier) -> Unit = { modifier ->
-            MetronomeMeterControl(value, enabled, update, modifier)
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (wide) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                tempo(Modifier.weight(1.2f)); meter(Modifier.weight(1f))
-            } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                tempo(Modifier.fillMaxWidth()); meter(Modifier.fillMaxWidth())
-            }
-            Surface(color = Raised, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border)) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(tr("CLICK NATIVO", "NATIVE CLICK"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                if (usingReferenceStem) tr("Suspendido por el stem de referencia", "Suspended by the reference stem")
-                                else tr("Salida MONITOR protegida", "Protected MONITOR output"),
-                                color = if (usingReferenceStem) Amber else TextMuted,
-                                fontSize = 9.sp,
-                            )
-                        }
-                        Switch(value.enabled && !usingReferenceStem, { update { old -> old.copy(enabled = it) } }, enabled = enabled && !usingReferenceStem)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    LabelValue(tr("NIVEL DEL CLICK", "CLICK LEVEL"), formatDb(value.gainDb), Amber)
-                    Slider(value.gainDb, { gain -> update { it.copy(gainDb = gain) } }, valueRange = -60f..0f, enabled = enabled)
-                }
-            }
-            Surface(
-                color = Red.copy(alpha = .06f),
-                shape = RoundedCornerShape(9.dp),
-                border = BorderStroke(1.dp, if (value.mainEnabled) Red.copy(alpha = .7f) else Border),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(tr("AUDICIÓN EN MAIN", "AUDITION ON MAIN"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text(tr("Sólo para prueba; apagado por seguridad", "Testing only; off for safety"), color = Red, fontSize = 9.sp)
-                    }
-                    Switch(value.mainEnabled, { main -> update { it.copy(mainEnabled = main) } }, enabled = enabled)
-                }
-            }
+        val horizontal = maxWidth >= 540.dp
+        if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+            MetronomeClockConsole(value, enabled, update, Modifier.weight(1.2f))
+            CompactClickOutputControl(value, enabled, usingReferenceStem, update, Modifier.weight(1f))
+        } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetronomeClockConsole(value, enabled, update, Modifier.fillMaxWidth())
+            NativeClickControl(value, enabled, usingReferenceStem, update, Modifier.fillMaxWidth())
+            MainAuditionControl(value, enabled, update, Modifier.fillMaxWidth())
         }
     }
 }
 
 @Composable
-private fun MetronomeTempoControl(
+private fun CompactClickOutputControl(
     value: MetronomeSettings,
     enabled: Boolean,
+    usingReferenceStem: Boolean,
     update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
     modifier: Modifier,
 ) {
     Surface(modifier, color = Raised, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border)) {
-        Column(Modifier.padding(12.dp)) {
-            Text("TEMPO", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Black)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    value.bpm.roundToInt().toString(),
-                    Modifier.weight(1f),
-                    color = if (enabled) Mint else TextMuted,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Black,
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("CLICK NATIVO", "NATIVE CLICK"), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (usingReferenceStem) tr("Usa stem de referencia", "Reference stem active")
+                        else "MONITOR",
+                        color = if (usingReferenceStem) Amber else TextMuted,
+                        fontSize = 8.sp,
+                    )
+                }
+                Switch(
+                    checked = value.enabled && !usingReferenceStem,
+                    onCheckedChange = { update { old -> old.copy(enabled = it) } },
+                    enabled = enabled && !usingReferenceStem,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Bg,
+                        checkedTrackColor = Mint,
+                        checkedBorderColor = Mint,
+                        uncheckedThumbColor = TextMuted,
+                        uncheckedTrackColor = Panel,
+                        uncheckedBorderColor = Border,
+                    ),
                 )
-                Text("BPM", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                MetronomeStepButton(R.drawable.ic_ui_remove, tr("Bajar tempo", "Decrease tempo"), enabled) {
-                    update { it.copy(bpm = (it.bpm - 1.0).coerceAtLeast(40.0)) }
-                }
-                Spacer(Modifier.width(4.dp))
-                MetronomeStepButton(R.drawable.ic_ui_add, tr("Subir tempo", "Increase tempo"), enabled) {
-                    update { it.copy(bpm = (it.bpm + 1.0).coerceAtMost(240.0)) }
-                }
             }
-            Slider(value.bpm.toFloat(), { bpm -> update { it.copy(bpm = bpm.toDouble()) } }, valueRange = 40f..240f, enabled = enabled)
+            Row(Modifier.height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(formatDb(value.gainDb), color = Amber, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+                Slider(
+                    value = value.gainDb,
+                    onValueChange = { gain -> update { it.copy(gainDb = gain) } },
+                    modifier = Modifier.weight(1f),
+                    valueRange = -60f..0f,
+                    enabled = enabled,
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .65f)))
+            Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("AUDICIÓN MAIN", "MAIN AUDITION"), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(tr("Prueba temporal", "Temporary test"), color = Red, fontSize = 8.sp)
+                }
+                Switch(
+                    checked = value.mainEnabled,
+                    onCheckedChange = { main -> update { it.copy(mainEnabled = main) } },
+                    enabled = enabled,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Bg,
+                        checkedTrackColor = Red,
+                        checkedBorderColor = Red,
+                        uncheckedThumbColor = TextMuted,
+                        uncheckedTrackColor = Panel,
+                        uncheckedBorderColor = Border,
+                    ),
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun MetronomeMeterControl(
+private fun NativeClickControl(
     value: MetronomeSettings,
     enabled: Boolean,
+    usingReferenceStem: Boolean,
     update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
     modifier: Modifier,
 ) {
-    val presets = listOf(4 to 4, 3 to 4, 6 to 8, 2 to 4)
     Surface(modifier, color = Raised, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border)) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(tr("COMPÁS", "METER"), Modifier.weight(1f), color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Black)
-                Text("${value.numerator}/${value.denominator}", color = if (enabled) Amber else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 18.sp, fontWeight = FontWeight.Black)
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("CLICK NATIVO", "NATIVE CLICK"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (usingReferenceStem) tr("Suspendido por el stem de referencia", "Suspended by the reference stem")
+                        else tr("Salida MONITOR protegida", "Protected MONITOR output"),
+                        color = if (usingReferenceStem) Amber else TextMuted,
+                        fontSize = 9.sp,
+                    )
+                }
+                Switch(
+                    checked = value.enabled && !usingReferenceStem,
+                    onCheckedChange = { update { old -> old.copy(enabled = it) } },
+                    enabled = enabled && !usingReferenceStem,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Bg,
+                        checkedTrackColor = Mint,
+                        checkedBorderColor = Mint,
+                        uncheckedThumbColor = TextMuted,
+                        uncheckedTrackColor = Panel,
+                        uncheckedBorderColor = Border,
+                    ),
+                )
             }
             Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                presets.forEach { (numerator, denominator) ->
-                    MetronomeMeterChoice(
-                        label = "$numerator/$denominator",
-                        selected = value.numerator == numerator && value.denominator == denominator,
-                        enabled = enabled,
-                        modifier = Modifier.weight(1f),
-                    ) { update { it.copy(numerator = numerator, denominator = denominator) } }
-                }
+            LabelValue(tr("NIVEL DEL CLICK", "CLICK LEVEL"), formatDb(value.gainDb), Amber)
+            Slider(value.gainDb, { gain -> update { it.copy(gainDb = gain) } }, valueRange = -60f..0f, enabled = enabled)
+        }
+    }
+}
+
+@Composable
+private fun MainAuditionControl(
+    value: MetronomeSettings,
+    enabled: Boolean,
+    update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
+    modifier: Modifier,
+) {
+    Surface(
+        modifier,
+        color = Red.copy(alpha = .06f),
+        shape = RoundedCornerShape(9.dp),
+        border = BorderStroke(1.dp, if (value.mainEnabled) Red.copy(alpha = .7f) else Border),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("AUDICIÓN EN MAIN", "AUDITION ON MAIN"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(tr("Sólo para prueba; apagado por seguridad", "Testing only; off for safety"), color = Red, fontSize = 9.sp)
+            }
+            Switch(
+                checked = value.mainEnabled,
+                onCheckedChange = { main -> update { it.copy(mainEnabled = main) } },
+                enabled = enabled,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Bg,
+                    checkedTrackColor = Red,
+                    checkedBorderColor = Red,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = Panel,
+                    uncheckedBorderColor = Border,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetronomeClockConsole(
+    value: MetronomeSettings,
+    enabled: Boolean,
+    update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
+    modifier: Modifier,
+) {
+    Surface(modifier, color = Raised, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(10.dp)) {
+            val narrow = maxWidth < 280.dp
+            if (narrow) Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                TempoConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .7f)))
+                MeterConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
+            } else Row(verticalAlignment = Alignment.CenterVertically) {
+                TempoConsoleModule(value, enabled, update, Modifier.weight(1f))
+                Box(Modifier.padding(horizontal = 12.dp).width(1.dp).height(104.dp).background(Border.copy(alpha = .7f)))
+                MeterConsoleModule(value, enabled, update, Modifier.weight(1.08f))
             }
         }
     }
 }
 
 @Composable
-private fun MetronomeStepButton(iconRes: Int, label: String, enabled: Boolean, click: () -> Unit) {
+private fun TempoConsoleModule(
+    value: MetronomeSettings,
+    enabled: Boolean,
+    update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier) {
+        ConsoleSectionLabel("TEMPO", Mint)
+        Spacer(Modifier.height(5.dp))
+        EditableBpmField(value.bpm, enabled, Modifier.fillMaxWidth().semantics { contentDescription = "BPM" }) { bpm ->
+            update { it.copy(bpm = bpm) }
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MetronomeStepButton(R.drawable.ic_ui_remove, tr("Bajar tempo", "Decrease tempo"), enabled, Modifier.weight(1f)) {
+                update { it.copy(bpm = (it.bpm - 1.0).coerceAtLeast(20.0)) }
+            }
+            MetronomeStepButton(R.drawable.ic_ui_add, tr("Subir tempo", "Increase tempo"), enabled, Modifier.weight(1f)) {
+                update { it.copy(bpm = (it.bpm + 1.0).coerceAtMost(400.0)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeterConsoleModule(
+    value: MetronomeSettings,
+    enabled: Boolean,
+    update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
+    modifier: Modifier,
+) {
+    Column(modifier) {
+        ConsoleSectionLabel(tr("COMPÁS", "METER"), Amber)
+        Spacer(Modifier.height(5.dp))
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            EditableMeterPart(
+                label = tr("Numerador", "Numerator"),
+                value = value.numerator,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+            ) { numerator -> update { it.copy(numerator = numerator) } }
+            Text(
+                "/",
+                modifier = Modifier.height(52.dp).wrapContentHeight(Alignment.CenterVertically),
+                color = TextMuted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Light,
+            )
+            EditableMeterPart(
+                label = tr("Denominador", "Denominator"),
+                value = value.denominator,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+            ) { denominator -> update { it.copy(denominator = denominator) } }
+        }
+    }
+}
+
+@Composable
+private fun ConsoleSectionLabel(label: String, accent: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(3.dp).height(10.dp).background(accent, RoundedCornerShape(2.dp)))
+        Spacer(Modifier.width(7.dp))
+        Text(label, color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 1)
+    }
+}
+
+private fun formatBpm(value: Double): String = if (value % 1.0 == 0.0) {
+    value.roundToInt().toString()
+} else {
+    String.format(Locale.US, "%.2f", value).trimEnd('0').trimEnd('.')
+}
+
+@Composable
+private fun EditableBpmField(value: Double, enabled: Boolean, modifier: Modifier, change: (Double) -> Unit) {
+    var text by rememberSaveable { mutableStateOf(formatBpm(value)) }
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    fun commit() {
+        val next = text.replace(',', '.').toDoubleOrNull()?.coerceIn(20.0, 400.0) ?: value
+        text = formatBpm(next)
+        if (next != value) change(next)
+    }
+
+    LaunchedEffect(value, focused) {
+        if (!focused) text = formatBpm(value)
+    }
+
+    ConsoleNumericReadout(
+        value = text,
+        onValueChange = { candidate ->
+            if (candidate.length <= 6 && candidate.count { it == '.' || it == ',' } <= 1 && candidate.all { it.isDigit() || it == '.' || it == ',' }) {
+                text = candidate
+            }
+        },
+        modifier = modifier,
+        enabled = enabled,
+        accent = Mint,
+        suffix = null,
+        textSize = 27,
+        keyboardType = KeyboardType.Decimal,
+        focused = focused,
+        onFocusChanged = { isFocused ->
+            if (focused && !isFocused) commit()
+            focused = isFocused
+        },
+        onDone = { commit(); focusManager.clearFocus() },
+    )
+}
+
+@Composable
+private fun ConsoleNumericReadout(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    accent: Color,
+    modifier: Modifier,
+    suffix: String? = null,
+    textSize: Int = 20,
+    keyboardType: KeyboardType,
+    focused: Boolean,
+    onFocusChanged: (Boolean) -> Unit,
+    onDone: () -> Unit,
+) {
+    Surface(
+        modifier = modifier.height(52.dp),
+        color = Bg,
+        shape = RoundedCornerShape(7.dp),
+        border = BorderStroke(1.dp, if (focused) accent else Border.copy(alpha = .85f)),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxSize().onFocusChanged { state -> onFocusChanged(state.isFocused) },
+            enabled = enabled,
+            singleLine = true,
+            textStyle = TextStyle(
+                color = if (enabled) accent else TextMuted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = textSize.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onDone() }),
+            cursorBrush = SolidColor(accent),
+            decorationBox = { innerTextField ->
+                Box(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        innerTextField()
+                    }
+                    suffix?.let {
+                        Text(
+                            it,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 5.dp),
+                            color = TextMuted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = .8.sp,
+                        )
+                    }
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun EditableMeterPart(label: String, value: Int, enabled: Boolean, modifier: Modifier, change: (Int) -> Unit) {
+    var text by rememberSaveable { mutableStateOf(value.toString()) }
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    fun commit() {
+        val next = text.toIntOrNull()?.coerceIn(1, 32) ?: value
+        text = next.toString()
+        if (next != value) change(next)
+    }
+
+    fun step(delta: Int) {
+        val next = ((text.toIntOrNull() ?: value) + delta).coerceIn(1, 32)
+        text = next.toString()
+        change(next)
+    }
+
+    LaunchedEffect(value, focused) {
+        if (!focused) text = value.toString()
+    }
+
+    Column(modifier) {
+        ConsoleNumericReadout(
+            value = text,
+            onValueChange = { candidate ->
+                val parsed = candidate.toIntOrNull()
+                if (candidate.isEmpty() || (candidate.length <= 2 && parsed != null && parsed in 1..32)) text = candidate
+            },
+            enabled = enabled,
+            accent = Amber,
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = label },
+            textSize = 25,
+            keyboardType = KeyboardType.Number,
+            focused = focused,
+            onFocusChanged = { isFocused ->
+                if (focused && !isFocused) commit()
+                focused = isFocused
+            },
+            onDone = { commit(); focusManager.clearFocus() },
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            MetronomeStepButton(R.drawable.ic_ui_remove, tr("Disminuir $label", "Decrease $label"), enabled, Modifier.weight(1f)) { step(-1) }
+            MetronomeStepButton(R.drawable.ic_ui_add, tr("Aumentar $label", "Increase $label"), enabled, Modifier.weight(1f)) { step(1) }
+        }
+    }
+}
+
+@Composable
+private fun MetronomeStepButton(
+    iconRes: Int,
+    label: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    click: () -> Unit,
+) {
     Surface(
         onClick = click,
         enabled = enabled,
-        modifier = Modifier.size(44.dp).semantics { contentDescription = label; role = Role.Button },
+        modifier = modifier.height(32.dp).semantics { contentDescription = label; role = Role.Button },
         color = Panel,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(6.dp),
         border = BorderStroke(1.dp, Border),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            VectorIcon(iconRes, null, if (enabled) TextMain else TextMuted.copy(alpha = .35f), Modifier.size(20.dp))
-        }
-    }
-}
-
-@Composable
-private fun MetronomeMeterChoice(label: String, selected: Boolean, enabled: Boolean, modifier: Modifier, click: () -> Unit) {
-    Surface(
-        onClick = click,
-        enabled = enabled,
-        modifier = modifier.height(44.dp),
-        color = if (selected) Amber.copy(alpha = .18f) else Panel,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, if (selected) Amber else Border),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(label, color = if (selected && enabled) Amber else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            VectorIcon(iconRes, null, if (enabled) TextMain else TextMuted.copy(alpha = .35f), Modifier.size(17.dp))
         }
     }
 }

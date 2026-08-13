@@ -28,7 +28,7 @@ class SongStoreCodecTest {
                 name = "Show principal",
                 playlist = listOf(
                     MasterTrack("master-1", "Intro", listOf(track), gainDb = -2f, pan = .1f,
-                        metronomeOverride = MetronomeSettings(true, 123.5, 7, 8, -9f, false),
+                        metronomeOverride = MetronomeSettings(true, 137.5, 7, 10, -9f, false),
                         markers = listOf(TimelineMarker("marker-1", "Estribillo", 192_000, TimelineMarkerKind.CHORUS, true, 4)),
                         tempoGridVisible = false,
                         clickReferenceTrackId = track.id),
