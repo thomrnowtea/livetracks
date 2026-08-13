@@ -12,6 +12,25 @@ const val TIMELINE_SAMPLE_RATE: Int = 48_000
 
 enum class TrackType { MUSIC, CLICK, CUE, VIDEO_AUDIO_DISABLED, OTHER }
 
+enum class TimelineMarkerKind { INTRO, VERSE, PRE_CHORUS, CHORUS, BRIDGE, SOLO, BREAKDOWN, OUTRO, CUSTOM }
+
+data class TimelineMarker(
+    val id: String,
+    val label: String,
+    /** Absolute marker location on the master-track timeline, expressed at 48 kHz. */
+    val positionFrames: Long,
+    val kind: TimelineMarkerKind = TimelineMarkerKind.CUSTOM,
+    val voiceCueEnabled: Boolean = true,
+    /** How many metronome beats before the marker the pre-rendered voice cue starts. */
+    val voiceLeadBeats: Int = 2,
+) {
+    init {
+        require(label.isNotBlank())
+        require(positionFrames >= 0)
+        require(voiceLeadBeats in 0..16)
+    }
+}
+
 data class SourceMetadata(
     val channelCount: Int,
     val sampleRate: Int,
@@ -111,6 +130,14 @@ data class MetronomeSettings(
         require(denominator in setOf(2, 4, 8, 16))
         require(gainDb in -60f..6f)
     }
+
+    fun beatDurationSeconds(): Double = 60.0 / bpm * 4.0 / denominator
+
+    fun beatDurationFrames(): Long = (beatDurationSeconds() * TIMELINE_SAMPLE_RATE).roundToLong().coerceAtLeast(1)
+
+    fun barDurationSeconds(): Double = beatDurationSeconds() * numerator
+
+    fun barDurationFrames(): Long = beatDurationFrames() * numerator
 }
 
 /** One playable playlist item containing synchronized, independently mixed stems. */
@@ -122,17 +149,31 @@ data class MasterTrack(
     val pan: Float = 0f,
     /** Null means this item inherits the project's metronome template. */
     val metronomeOverride: MetronomeSettings? = null,
+    val markers: List<TimelineMarker> = emptyList(),
+    /** Whether the musical beat/downbeat overlay is visible in this timeline. */
+    val tempoGridVisible: Boolean = true,
+    /** Optional user stem used as the audible click instead of the native synthesised click. */
+    val clickReferenceTrackId: String? = null,
 ) {
     init {
         require(name.isNotBlank())
         require(gainDb in -60f..6f)
         require(pan in -1f..1f)
         require(tracks.map(Track::id).distinct().size == tracks.size)
+        require(markers.map(TimelineMarker::id).distinct().size == markers.size)
+        require(clickReferenceTrackId == null || tracks.any {
+            it.id == clickReferenceTrackId && it.type == TrackType.CLICK && it.mainSendDb == SILENCE_DB
+        })
     }
 
     fun metronome(default: MetronomeSettings): MetronomeSettings = metronomeOverride ?: default
 
-    fun durationSeconds(): Double = tracks.maxOfOrNull { it.startSeconds() + it.durationSeconds() } ?: 0.0
+    fun clickReferenceTrack(): Track? = clickReferenceTrackId?.let { id -> tracks.firstOrNull { it.id == id } }
+
+    fun durationSeconds(): Double = maxOf(
+        tracks.maxOfOrNull { it.startSeconds() + it.durationSeconds() } ?: 0.0,
+        markers.maxOfOrNull { it.positionFrames.toDouble() / TIMELINE_SAMPLE_RATE } ?: 0.0,
+    )
 }
 
 data class Project(
@@ -149,7 +190,37 @@ data class Project(
         require(masterPan in -1f..1f)
         require(playlist.map(MasterTrack::id).distinct().size == playlist.size)
     }
+
+    fun extractTrackAsMaster(
+        sourceMasterId: String,
+        trackId: String,
+        newMasterId: String,
+        newMasterName: String,
+    ): Pair<Project, MasterTrack>? {
+        val sourceIndex = playlist.indexOfFirst { it.id == sourceMasterId }
+        val source = playlist.getOrNull(sourceIndex) ?: return null
+        val extracted = source.tracks.firstOrNull { it.id == trackId } ?: return null
+        val newMaster = MasterTrack(
+            id = newMasterId,
+            name = newMasterName.trim().ifBlank { extracted.name },
+            tracks = listOf(extracted.copy(startOffsetFrames = 0)),
+            metronomeOverride = source.metronome(defaultMetronome),
+            tempoGridVisible = source.tempoGridVisible,
+            clickReferenceTrackId = extracted.id.takeIf { source.clickReferenceTrackId == trackId },
+        )
+        val updated = playlist.toMutableList().apply {
+            this[sourceIndex] = source.copy(
+                tracks = source.tracks.filterNot { it.id == trackId },
+                clickReferenceTrackId = source.clickReferenceTrackId.takeUnless { it == trackId },
+            )
+            add(sourceIndex + 1, newMaster)
+        }
+        return copy(playlist = updated) to newMaster
+    }
 }
+
+fun TimelineMarker.voiceCueStartFrames(metronome: MetronomeSettings): Long =
+    (positionFrames - voiceLeadBeats * metronome.beatDurationFrames()).coerceAtLeast(0)
 
 sealed interface OutputMode {
     data object SingleMix : OutputMode

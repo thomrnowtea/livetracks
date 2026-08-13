@@ -13,7 +13,7 @@
 class AudioEngine final : public oboe::AudioStreamDataCallback,
                           public oboe::AudioStreamErrorCallback {
 public:
-    static constexpr int32_t kMaxTracks = 16;
+    static constexpr int32_t kMaxTracks = 48;
 
     AudioEngine();
     bool open(int32_t requestedSampleRate, int32_t requestedChannels);
@@ -27,6 +27,7 @@ public:
     void setTrackPan(int32_t trackIndex, float pan) noexcept;
     void setTrackMuted(int32_t trackIndex, bool muted) noexcept;
     void setTrackSoloed(int32_t trackIndex, bool soloed) noexcept;
+    void setTrackSoloSafe(int32_t trackIndex, bool soloSafe) noexcept;
     void setTrackSends(int32_t trackIndex, float mainSend, float monitorSend) noexcept;
     void setTrackStartOffset(int32_t trackIndex, int64_t outputFrames);
     void setTrackSourceRange(int32_t trackIndex, int64_t startFrame, int64_t endFrameExclusive);
@@ -75,6 +76,7 @@ private:
     std::array<std::atomic<float>, kMaxTracks> monitorSends_{};
     std::array<std::atomic<bool>, kMaxTracks> trackMuted_{};
     std::array<std::atomic<bool>, kMaxTracks> trackSoloed_{};
+    std::array<std::atomic<bool>, kMaxTracks> trackSoloSafe_{};
     std::array<std::atomic<float>, kMaxTracks> trackPeaks_{};
     std::array<std::atomic<int64_t>, kMaxTracks> trackStartOffsets_{};
     std::array<std::atomic<int64_t>, kMaxTracks> trackSourceStartFrames_{};

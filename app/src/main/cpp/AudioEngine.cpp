@@ -45,6 +45,7 @@ AudioEngine::AudioEngine() {
         monitorSends_[index].store(0.5F, std::memory_order_relaxed);
         trackMuted_[index].store(false, std::memory_order_relaxed);
         trackSoloed_[index].store(false, std::memory_order_relaxed);
+        trackSoloSafe_[index].store(false, std::memory_order_relaxed);
         trackPeaks_[index].store(0.0F, std::memory_order_relaxed);
         trackStartOffsets_[index].store(0, std::memory_order_relaxed);
         trackSourceStartFrames_[index].store(0, std::memory_order_relaxed);
@@ -180,6 +181,7 @@ void AudioEngine::clearTracks() {
     minimumTimelineDurationFrames_.store(0, std::memory_order_relaxed);
     for (auto& track : tracks_) track = WavTrack{};
     for (auto& peak : trackPeaks_) peak.store(0.0F, std::memory_order_relaxed);
+    for (auto& soloSafe : trackSoloSafe_) soloSafe.store(false, std::memory_order_relaxed);
     for (auto& offset : trackStartOffsets_) offset.store(0, std::memory_order_relaxed);
     for (auto& start : trackSourceStartFrames_) start.store(0, std::memory_order_relaxed);
     for (auto& end : trackSourceEndFrames_) end.store(-1, std::memory_order_relaxed);
@@ -224,6 +226,7 @@ void AudioEngine::setTrackGain(int32_t index, float value) noexcept { if (index 
 void AudioEngine::setTrackPan(int32_t index, float value) noexcept { if (index >= 0 && index < kMaxTracks) trackPans_[index].store(std::clamp(value, -1.0F, 1.0F)); }
 void AudioEngine::setTrackMuted(int32_t index, bool value) noexcept { if (index >= 0 && index < kMaxTracks) trackMuted_[index].store(value); }
 void AudioEngine::setTrackSoloed(int32_t index, bool value) noexcept { if (index >= 0 && index < kMaxTracks) trackSoloed_[index].store(value); }
+void AudioEngine::setTrackSoloSafe(int32_t index, bool value) noexcept { if (index >= 0 && index < kMaxTracks) trackSoloSafe_[index].store(value); }
 void AudioEngine::setTrackSends(int32_t index, float main, float monitor) noexcept {
     if (index < 0 || index >= kMaxTracks) return;
     mainSends_[index].store(std::clamp(main, 0.0F, 2.0F));
@@ -318,7 +321,9 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(oboe::AudioStream* stream, vo
     const int64_t startFrame = transportFrames_.load(std::memory_order_relaxed);
     std::array<float, kMaxTracks> callbackPeaks{};
     bool anySolo = false;
-    for (int32_t i = 0; i < count; ++i) anySolo = anySolo || trackSoloed_[i].load();
+    for (int32_t i = 0; i < count; ++i) {
+        anySolo = anySolo || (!trackSoloSafe_[i].load() && trackSoloed_[i].load());
+    }
 
     for (int32_t frame = 0; frame < numFrames; ++frame) {
         const int64_t transportFrame = startFrame + frame;
@@ -340,7 +345,7 @@ oboe::DataCallbackResult AudioEngine::onAudioReady(oboe::AudioStream* stream, vo
             const double sourcePosition = sourceStart + static_cast<double>(relativeFrame) * track.sampleRate / outputRate;
             const int64_t sourceFrame = static_cast<int64_t>(sourcePosition);
             if (sourceFrame >= sourceEnd) continue;
-            if (trackMuted_[index].load() || (anySolo && !trackSoloed_[index].load())) continue;
+            if (trackMuted_[index].load() || (anySolo && !trackSoloed_[index].load() && !trackSoloSafe_[index].load())) continue;
             const int64_t nextFrame = std::min(sourceFrame + 1, sourceEnd - 1);
             const float fraction = static_cast<float>(sourcePosition - sourceFrame);
             auto sampleAt = [&](int64_t frameIndex, int32_t channel) {

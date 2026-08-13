@@ -12,8 +12,11 @@ import com.thomrnowtea.livetracks.audio.AudioOutputDevice
 import com.thomrnowtea.livetracks.audio.AndroidAudioDecoder
 import com.thomrnowtea.livetracks.audio.EngineDiagnostics
 import com.thomrnowtea.livetracks.audio.NativeAudioController
+import com.thomrnowtea.livetracks.audio.PerformanceModeController
 import com.thomrnowtea.livetracks.audio.WavAnalysis
 import com.thomrnowtea.livetracks.audio.WavAnalyzer
+import com.thomrnowtea.livetracks.audio.VoiceCueException
+import com.thomrnowtea.livetracks.audio.VoiceCueRenderer
 import com.thomrnowtea.livetracks.data.ProjectRepository
 import com.thomrnowtea.livetracks.data.AppLanguage
 import com.thomrnowtea.livetracks.data.AppSettings
@@ -34,7 +37,10 @@ import com.thomrnowtea.livetracks.domain.SourceMetadata
 import com.thomrnowtea.livetracks.domain.TIMELINE_SAMPLE_RATE
 import com.thomrnowtea.livetracks.domain.Track
 import com.thomrnowtea.livetracks.domain.TrackType
+import com.thomrnowtea.livetracks.domain.TimelineMarker
+import com.thomrnowtea.livetracks.domain.TimelineMarkerKind
 import com.thomrnowtea.livetracks.domain.UpdateFailure
+import com.thomrnowtea.livetracks.domain.voiceCueStartFrames
 import java.util.ArrayDeque
 import java.io.FileInputStream
 import java.util.UUID
@@ -66,6 +72,8 @@ data class MixerTrackUi(
     val monitorSendLabel: String,
     val startOffsetFrames: Long,
     val durationSeconds: Double,
+    val hasAudioSource: Boolean,
+    val isClickReference: Boolean = false,
     val waveformPeaks: List<Float> = emptyList(),
     val peak: Float = 0f,
 )
@@ -81,6 +89,8 @@ data class MainUiState(
     val tracks: List<MixerTrackUi> = emptyList(),
     val workspace: Workspace = Workspace.PROJECTS,
     val trackWorkspace: TrackWorkspace = TrackWorkspace.TIMELINE,
+    val playlistPerformanceMode: Boolean = false,
+    val playlistEditBarExpanded: Boolean = true,
     val devices: List<AudioOutputDevice> = emptyList(),
     val diagnostics: EngineDiagnostics = EngineDiagnostics(),
     val safetyStatus: SafetyStatus = SafetyStatus.WARNING,
@@ -90,13 +100,16 @@ data class MainUiState(
     val loading: Boolean = true,
     val settings: AppSettings = AppSettings(),
     val appUpdateStatus: AppUpdateStatus = AppUpdateStatus.Idle,
+    val renderingVoiceCueIds: Set<String> = emptySet(),
+    val failedVoiceCueIds: Set<String> = emptySet(),
+    val notificationPolicyAccessGranted: Boolean = false,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private data class TimelineEditSnapshot(
         val projectId: String,
-        val masterTrackId: String,
-        val tracks: List<Track>,
+        val playlist: List<MasterTrack>,
+        val selectedMasterTrackId: String?,
         val selectedTrackId: String?,
     )
 
@@ -106,6 +119,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val updateInstaller = AppUpdateInstaller(application)
     private val resolver = application.contentResolver
     private val androidAudioDecoder = AndroidAudioDecoder(resolver, java.io.File(application.cacheDir, "decoded_audio"))
+    private val voiceCueRenderer = VoiceCueRenderer(application)
+    private val performanceMode = PerformanceModeController(application)
     private val audio = NativeAudioController()
     private val hardware = AudioHardwareMonitor(application, ::onDevicesChanged)
     private var requestedSampleRate = 0
@@ -120,7 +135,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<MainUiState> = _state.asStateFlow()
 
     init {
-        _state.update { it.copy(settings = settingsRepository.read()) }
+        _state.update { it.copy(settings = settingsRepository.read(), notificationPolicyAccessGranted = performanceMode.hasNotificationPolicyAccess) }
         hardware.start()
         viewModelScope.launch {
             val projects = runCatching { repository.getProjects() }.getOrElse { emptyList() }
@@ -134,7 +149,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     selectedTimelineTrackId = master?.tracks?.firstOrNull()?.id,
                     tracks = mixerTracks(master, analysisCache),
                     loading = false,
-                    message = if (projects.isEmpty()) "Crea tu primer proyecto" else "Listo para configurar el show",
+                    message = if (projects.isEmpty()) uiText("Crea tu primer proyecto", "Create your first project")
+                    else uiText("Listo para configurar el show", "Ready to configure the show"),
                 )
             }
             analyzeTracks(master)
@@ -144,6 +160,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             while (isActive) {
                 if (_state.value.diagnostics.outputOpen) {
                     val diagnostics = audio.diagnostics(requestedSampleRate)
+                    if (!diagnostics.toneEnabled) performanceMode.deactivate()
                     val peaks = audio.trackPeaks()
                     _state.update { current ->
                         current.copy(
@@ -160,15 +177,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setWorkspace(value: Workspace) = _state.update { it.copy(workspace = value) }
+    fun setWorkspace(value: Workspace) = _state.update {
+        it.copy(workspace = value, playlistPerformanceMode = if (value == Workspace.PLAYLIST) it.playlistPerformanceMode else false)
+    }
+
+    fun setPlaylistPerformanceMode(enabled: Boolean) {
+        val canEnter = selectedProject()?.playlist?.isNotEmpty() == true
+        _state.update { it.copy(playlistPerformanceMode = enabled && canEnter, workspace = Workspace.PLAYLIST) }
+    }
+
+    fun setPlaylistEditBarExpanded(expanded: Boolean) = _state.update { it.copy(playlistEditBarExpanded = expanded) }
     fun setTrackWorkspace(value: TrackWorkspace) = _state.update { it.copy(trackWorkspace = value) }
 
     fun createProject(name: String) {
         clearTimelineHistory()
-        val project = Project(UUID.randomUUID().toString(), name.trim().ifBlank { "Proyecto sin nombre" })
+        val project = Project(UUID.randomUUID().toString(), name.trim().ifBlank { uiText("Proyecto sin nombre", "Untitled project") })
         _state.update {
             it.copy(projects = it.projects + project, selectedProjectId = project.id, selectedMasterTrackId = null,
-                selectedTimelineTrackId = null, timelineCursorFrames = 0, tracks = emptyList(), message = "Proyecto creado")
+                selectedTimelineTrackId = null, timelineCursorFrames = 0, tracks = emptyList(), message = uiText("Proyecto creado", "Project created"))
         }
         invalidateAudio(); saveNow()
     }
@@ -186,7 +212,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update {
             it.copy(projects = remaining, selectedProjectId = next?.id, selectedMasterTrackId = next?.playlist?.firstOrNull()?.id,
                 selectedTimelineTrackId = next?.playlist?.firstOrNull()?.tracks?.firstOrNull()?.id, timelineCursorFrames = 0,
-                tracks = mixerTracks(next?.playlist?.firstOrNull(), analysisCache), message = "Proyecto eliminado")
+                tracks = mixerTracks(next?.playlist?.firstOrNull(), analysisCache), message = uiText("Proyecto eliminado", "Project deleted"))
         }
         invalidateAudio(); saveNow()
     }
@@ -205,10 +231,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun createMasterTrack(name: String) {
         if (selectedProject() == null) return
         clearTimelineHistory()
-        val master = MasterTrack(UUID.randomUUID().toString(), name.trim().ifBlank { "Pista ${selectedProject()!!.playlist.size + 1}" })
+        val master = MasterTrack(UUID.randomUUID().toString(), name.trim().ifBlank { "${uiText("Pista", "Track")} ${selectedProject()!!.playlist.size + 1}" })
         updateSelectedProject { it.copy(playlist = it.playlist + master) }
         _state.update { it.copy(selectedMasterTrackId = master.id, selectedTimelineTrackId = null,
-            timelineCursorFrames = 0, tracks = emptyList(), workspace = Workspace.PLAYLIST, message = "Pista master agregada") }
+            timelineCursorFrames = 0, tracks = emptyList(), workspace = Workspace.PLAYLIST, message = uiText("Pista master agregada", "Master track added")) }
         invalidateAudio(); saveNow()
     }
 
@@ -225,7 +251,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val next = remaining.firstOrNull()
         updateSelectedProject { it.copy(playlist = remaining) }
         _state.update { it.copy(selectedMasterTrackId = next?.id, selectedTimelineTrackId = next?.tracks?.firstOrNull()?.id,
-            timelineCursorFrames = 0, tracks = mixerTracks(next, analysisCache), message = "Pista master eliminada") }
+            timelineCursorFrames = 0, tracks = mixerTracks(next, analysisCache), message = uiText("Pista master eliminada", "Master track deleted")) }
         invalidateAudio(); saveNow()
     }
 
@@ -243,6 +269,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         playPause()
     }
 
+    fun skipToPreviousMasterTrack() = skipMasterTrack(-1)
+
+    fun skipToNextMasterTrack() = skipMasterTrack(1)
+
+    private fun skipMasterTrack(direction: Int) {
+        val project = selectedProject() ?: return
+        val current = project.playlist.indexOfFirst { it.id == _state.value.selectedMasterTrackId }
+        val target = project.playlist.getOrNull(current + direction) ?: return
+        selectMasterTrack(target.id)
+        _state.update { it.copy(message = "${uiText("ARMADA", "ARMED")} · ${target.name}") }
+    }
+
     fun moveMasterTrack(from: Int, direction: Int) {
         val project = selectedProject() ?: return
         val to = (from + direction).coerceIn(0, project.playlist.lastIndex)
@@ -254,7 +292,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun importTracks(uris: List<Uri>) {
         val master = selectedMasterTrack()
         if (master == null || uris.isEmpty()) {
-            _state.update { it.copy(workspace = Workspace.PLAYLIST, message = "Selecciona una pista master antes de importar stems") }
+            _state.update { it.copy(workspace = Workspace.PLAYLIST, message = uiText("Selecciona una pista master antes de importar stems", "Select a master track before importing stems")) }
             return
         }
         val imported = uris.take(16 - master.tracks.size).mapNotNull { uri ->
@@ -262,7 +300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                     if (cursor.moveToFirst()) cursor.getString(0) else null
-                } ?: uri.lastPathSegment ?: "Stem de audio"
+                } ?: uri.lastPathSegment ?: uiText("Stem de audio", "Audio stem")
                 val type = when {
                     name.contains("click", true) -> TrackType.CLICK
                     name.contains("cue", true) -> TrackType.CUE
@@ -274,7 +312,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.getOrNull()
         }
         if (imported.isEmpty()) {
-            _state.update { it.copy(message = "No se pudo conservar acceso a los archivos") }; return
+            _state.update { it.copy(message = uiText("No se pudo conservar acceso a los archivos", "Could not retain access to the files")) }; return
         }
         recordTimelineEdit()
         updateSelectedMaster { it.copy(tracks = it.tracks + imported) }
@@ -283,7 +321,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 workspace = Workspace.TRACK,
                 trackWorkspace = if (it.settings.openTimelineAfterImport) TrackWorkspace.TIMELINE else TrackWorkspace.MIXER,
                 selectedTimelineTrackId = it.selectedTimelineTrackId ?: imported.first().id,
-                message = "${imported.size} stems agregados",
+                message = "${imported.size} ${uiText("stems agregados", "stems added")}",
             )
         }
         invalidateAudio(); saveNow()
@@ -293,14 +331,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun createEmptyTrack(name: String, durationSeconds: Double) {
         val master = selectedMasterTrack() ?: return
         if (master.tracks.size >= 16) {
-            _state.update { it.copy(message = "Máximo de 16 stems") }
+            _state.update { it.copy(message = uiText("Máximo de 16 stems", "Maximum of 16 stems")) }
             return
         }
         val durationFrames = (durationSeconds.coerceIn(0.001, 24.0 * 60.0 * 60.0) * TIMELINE_SAMPLE_RATE)
             .roundToLong().coerceAtLeast(1)
         val track = Track.create(
             UUID.randomUUID().toString(),
-            name.trim().ifBlank { "Stem vacío" },
+            name.trim().ifBlank { uiText("Stem vacío", "Empty stem") },
             _state.value.settings.defaultStemType,
         ).copy(sourceMetadata = SourceMetadata(1, TIMELINE_SAMPLE_RATE, durationFrames))
         recordTimelineEdit()
@@ -310,7 +348,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 workspace = Workspace.TRACK,
                 trackWorkspace = TrackWorkspace.TIMELINE,
                 selectedTimelineTrackId = track.id,
-                message = "Stem vacío agregado · ${"%.3f".format(durationSeconds)} s",
+                message = "${uiText("Stem vacío agregado", "Empty stem added")} · ${"%.3f".format(durationSeconds)} s",
             )
         }
         invalidateAudio()
@@ -320,7 +358,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun removeTrack(trackId: String) {
         if (selectedMasterTrack()?.tracks?.none { it.id == trackId } != false) return
         recordTimelineEdit()
-        updateSelectedMaster { it.copy(tracks = it.tracks.filterNot { track -> track.id == trackId }) }
+        updateSelectedMaster {
+            it.copy(
+                tracks = it.tracks.filterNot { track -> track.id == trackId },
+                clickReferenceTrackId = it.clickReferenceTrackId.takeUnless { reference -> reference == trackId },
+            )
+        }
         _state.update { current ->
             current.copy(selectedTimelineTrackId = if (current.selectedTimelineTrackId == trackId) current.tracks.firstOrNull()?.id else current.selectedTimelineTrackId)
         }
@@ -332,13 +375,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cycleTrackType(trackId: String) {
-        updateSelectedTracks { track ->
-            if (track.id != trackId) track else {
-                val type = when (track.type) { TrackType.MUSIC -> TrackType.CLICK; TrackType.CLICK -> TrackType.CUE; else -> TrackType.MUSIC }
-                track.copy(type = type, mainSendDb = if (type == TrackType.MUSIC) 0f else SILENCE_DB, monitorSendDb = if (type == TrackType.MUSIC) -6f else 0f)
+        updateSelectedMaster { master ->
+            val updatedTracks = master.tracks.map { track ->
+                if (track.id != trackId) track else {
+                    val type = when (track.type) { TrackType.MUSIC -> TrackType.CLICK; TrackType.CLICK -> TrackType.CUE; else -> TrackType.MUSIC }
+                    track.copy(type = type, mainSendDb = if (type == TrackType.MUSIC) 0f else SILENCE_DB, monitorSendDb = if (type == TrackType.MUSIC) -6f else 0f)
+                }
             }
+            master.copy(
+                tracks = updatedTracks,
+                clickReferenceTrackId = master.clickReferenceTrackId.takeUnless { it == trackId },
+            )
         }
-        saveNow()
+        invalidateAudio(); saveNow()
+    }
+
+    fun setTempoGridVisible(visible: Boolean) {
+        updateSelectedMaster { it.copy(tempoGridVisible = visible) }
+        scheduleSave()
+    }
+
+    fun toggleSelectedTrackAsClickReference() {
+        val master = selectedMasterTrack() ?: return
+        val selectedId = _state.value.selectedTimelineTrackId ?: return
+        if (master.tracks.none { it.id == selectedId }) return
+        recordTimelineEdit()
+        val removing = master.clickReferenceTrackId == selectedId
+        updateSelectedMaster { current ->
+            current.copy(
+                tracks = current.tracks.map { track ->
+                    if (track.id != selectedId || removing) track else track.copy(
+                        type = TrackType.CLICK,
+                        mainSendDb = SILENCE_DB,
+                        monitorSendDb = 0f,
+                        muted = false,
+                    )
+                },
+                clickReferenceTrackId = if (removing) null else selectedId,
+            )
+        }
+        _state.update {
+            it.copy(message = if (removing) {
+                uiText("Referencia de click desactivada", "Click reference disabled")
+            } else {
+                uiText("Stem usado como referencia de click · sólo MONITOR", "Stem used as click reference · MONITOR only")
+            })
+        }
+        invalidateAudio(); saveNow()
     }
 
     fun setTrackOffset(trackId: String, timelineFrames: Long) {
@@ -369,7 +452,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun splitSelectedTrackAtCursor() {
         val master = selectedMasterTrack() ?: return
         if (master.tracks.size >= 16) {
-            _state.update { it.copy(message = "Máximo de 16 stems") }
+            _state.update { it.copy(message = uiText("Máximo de 16 stems", "Maximum of 16 stems")) }
             return
         }
         val selectedId = _state.value.selectedTimelineTrackId ?: return
@@ -382,7 +465,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             UUID.randomUUID().toString(),
             "$baseName · B$extension",
         ) ?: run {
-            _state.update { it.copy(message = "Ubica el cursor dentro del stem seleccionado") }
+            _state.update { it.copy(message = uiText("Ubica el cursor dentro del stem seleccionado", "Place the playhead inside the selected stem")) }
             return
         }
         recordTimelineEdit()
@@ -391,30 +474,149 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             add(index + 1, split.second)
         }
         updateSelectedMaster { it.copy(tracks = updated) }
-        _state.update { it.copy(selectedTimelineTrackId = split.second.id, message = "Stem dividido en el cursor") }
+        _state.update { it.copy(selectedTimelineTrackId = split.second.id, message = uiText("Stem dividido en el cursor", "Stem split at playhead")) }
         invalidateAudio(); saveNow()
+    }
+
+    fun extractSelectedTrackToNewMaster(name: String) {
+        val project = selectedProject() ?: return
+        val sourceMasterId = _state.value.selectedMasterTrackId ?: return
+        val selectedTrackId = _state.value.selectedTimelineTrackId ?: return
+        val result = project.extractTrackAsMaster(
+            sourceMasterId = sourceMasterId,
+            trackId = selectedTrackId,
+            newMasterId = UUID.randomUUID().toString(),
+            newMasterName = name,
+        ) ?: return
+        recordTimelineEdit()
+        val (updatedProject, newMaster) = result
+        val projects = _state.value.projects.map { if (it.id == project.id) updatedProject else it }
+        _state.update {
+            it.copy(
+                projects = projects,
+                selectedMasterTrackId = newMaster.id,
+                selectedTimelineTrackId = newMaster.tracks.single().id,
+                timelineCursorFrames = 0,
+                tracks = mixerTracks(newMaster, analysisCache),
+                message = uiText("Clip movido a una pista master independiente", "Clip moved to an independent master track"),
+            )
+        }
+        invalidateAudio(); saveNow(); updateTimelineHistoryAvailability()
+    }
+
+    fun createTimelineMarker(
+        label: String,
+        kind: TimelineMarkerKind,
+        voiceCueEnabled: Boolean,
+        voiceLeadBeats: Int,
+    ) {
+        val master = selectedMasterTrack() ?: return
+        if (master.markers.size >= MAX_TIMELINE_MARKERS || label.isBlank()) return
+        val marker = TimelineMarker(
+            id = UUID.randomUUID().toString(),
+            label = label.trim(),
+            positionFrames = _state.value.timelineCursorFrames,
+            kind = kind,
+            voiceCueEnabled = voiceCueEnabled,
+            voiceLeadBeats = voiceLeadBeats.coerceIn(0, 16),
+        )
+        recordTimelineEdit()
+        updateSelectedMaster { it.copy(markers = (it.markers + marker).sortedBy(TimelineMarker::positionFrames)) }
+        saveNow()
+        if (voiceCueEnabled) renderVoiceCue(marker)
+        _state.update { it.copy(message = "${uiText("Marca", "Marker")} ${marker.label} ${uiText("agregada", "added")}") }
+    }
+
+    fun updateTimelineMarker(
+        markerId: String,
+        label: String,
+        kind: TimelineMarkerKind,
+        voiceCueEnabled: Boolean,
+        voiceLeadBeats: Int,
+    ) {
+        val previous = selectedMasterTrack()?.markers?.firstOrNull { it.id == markerId } ?: return
+        if (label.isBlank()) return
+        val updated = previous.copy(
+            label = label.trim(),
+            kind = kind,
+            voiceCueEnabled = voiceCueEnabled,
+            voiceLeadBeats = voiceLeadBeats.coerceIn(0, 16),
+        )
+        recordTimelineEdit()
+        updateSelectedMaster { master -> master.copy(markers = master.markers.map { if (it.id == markerId) updated else it }) }
+        if (voiceCueEnabled) renderVoiceCue(updated) else {
+            voiceCueRenderer.remove(markerId)
+            _state.update { it.copy(failedVoiceCueIds = it.failedVoiceCueIds - markerId) }
+        }
+        invalidateAudio(); saveNow()
+    }
+
+    fun setTimelineMarkerPosition(markerId: String, positionFrames: Long) {
+        val master = selectedMasterTrack() ?: return
+        val current = master.markers.firstOrNull { it.id == markerId } ?: return
+        val durationFrames = (master.durationSeconds() * TIMELINE_SAMPLE_RATE).roundToLong()
+        val next = positionFrames.coerceIn(0, durationFrames.coerceAtLeast(current.positionFrames))
+        if (next == current.positionFrames) return
+        recordTimelineEdit()
+        updateSelectedMaster { value ->
+            value.copy(markers = value.markers.map { if (it.id == markerId) it.copy(positionFrames = next) else it }
+                .sortedBy(TimelineMarker::positionFrames))
+        }
+        invalidateAudio(); saveNow()
+    }
+
+    fun deleteTimelineMarker(markerId: String) {
+        if (selectedMasterTrack()?.markers?.none { it.id == markerId } != false) return
+        recordTimelineEdit()
+        updateSelectedMaster { it.copy(markers = it.markers.filterNot { marker -> marker.id == markerId }) }
+        voiceCueRenderer.remove(markerId)
+        _state.update { it.copy(renderingVoiceCueIds = it.renderingVoiceCueIds - markerId, failedVoiceCueIds = it.failedVoiceCueIds - markerId) }
+        invalidateAudio(); saveNow()
+    }
+
+    private fun renderVoiceCue(marker: TimelineMarker) {
+        _state.update {
+            it.copy(renderingVoiceCueIds = it.renderingVoiceCueIds + marker.id, failedVoiceCueIds = it.failedVoiceCueIds - marker.id)
+        }
+        viewModelScope.launch {
+            runCatching { voiceCueRenderer.render(marker.id, marker.label, _state.value.settings.language) }
+                .onSuccess {
+                    _state.update { state -> state.copy(renderingVoiceCueIds = state.renderingVoiceCueIds - marker.id) }
+                    invalidateAudio()
+                }
+                .onFailure { failure ->
+                    _state.update { state ->
+                        state.copy(
+                            renderingVoiceCueIds = state.renderingVoiceCueIds - marker.id,
+                            failedVoiceCueIds = state.failedVoiceCueIds + marker.id,
+                            message = (failure as? VoiceCueException)?.message
+                                ?: uiText("No se pudo generar el cue de voz", "Could not render the voice cue"),
+                        )
+                    }
+                }
+        }
     }
 
     fun undoTimelineEdit() {
         val target = undoTimelineEdits.pollLast() ?: return
         val current = timelineSnapshot() ?: return
-        if (target.projectId != current.projectId || target.masterTrackId != current.masterTrackId) {
+        if (target.projectId != current.projectId) {
             clearTimelineHistory()
             return
         }
         pushTimelineSnapshot(redoTimelineEdits, current)
-        restoreTimelineSnapshot(target, "Deshacer aplicado")
+        restoreTimelineSnapshot(target, uiText("Deshacer aplicado", "Undo applied"))
     }
 
     fun redoTimelineEdit() {
         val target = redoTimelineEdits.pollLast() ?: return
         val current = timelineSnapshot() ?: return
-        if (target.projectId != current.projectId || target.masterTrackId != current.masterTrackId) {
+        if (target.projectId != current.projectId) {
             clearTimelineHistory()
             return
         }
         pushTimelineSnapshot(undoTimelineEdits, current)
-        restoreTimelineSnapshot(target, "Rehacer aplicado")
+        restoreTimelineSnapshot(target, uiText("Rehacer aplicado", "Redo applied"))
     }
 
     fun playPause() {
@@ -426,24 +628,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 audio.resetTransport()
                 _state.update { it.copy(timelineCursorFrames = 0) }
             }
+            val exclusiveReady = if (play) performanceMode.activate(current.settings.exclusivePerformanceMode) else true
+            if (!play) performanceMode.deactivate()
             audio.setToneEnabled(play)
-            _state.update { it.copy(diagnostics = audio.diagnostics(requestedSampleRate), message = if (play) "REPRODUCIENDO" else "PAUSA") }
+            _state.update { it.copy(diagnostics = audio.diagnostics(requestedSampleRate), message = when {
+                !play -> uiText("PAUSA", "PAUSED")
+                !exclusiveReady -> uiText(
+                    "REPRODUCIENDO · concede acceso a No molestar para el modo exclusivo",
+                    "PLAYING · grant Do Not Disturb access for exclusive mode",
+                )
+                else -> uiText("REPRODUCIENDO", "PLAYING")
+            }) }
             return
         }
         val project = selectedProject()
         val master = selectedMasterTrack()
         if (project == null || master == null) {
-            _state.update { it.copy(workspace = Workspace.PLAYLIST, message = "Selecciona una pista de la playlist") }; return
+            _state.update { it.copy(workspace = Workspace.PLAYLIST, message = uiText("Selecciona una pista de la playlist", "Select a track from the playlist")) }; return
         }
         if (master.tracks.isEmpty()) {
-            _state.update { it.copy(workspace = Workspace.TRACK, message = "Importa al menos un stem de audio") }; return
+            _state.update { it.copy(workspace = Workspace.TRACK, message = uiText("Importa al menos un stem de audio", "Import at least one audio stem")) }; return
         }
-        _state.update { it.copy(openingOutput = true, message = "Preparando ${master.tracks.size} stems...") }
+        _state.update { it.copy(openingOutput = true, message = "${uiText("Preparando", "Preparing")} ${master.tracks.size} stems...") }
         viewModelScope.launch(Dispatchers.IO) {
             requestedSampleRate = hardware.nativeOutputSampleRate()
             var diagnostics = audio.open(requestedSampleRate)
             var error: String? = if (!diagnostics.outputOpen) diagnostics.lastError else null
+            var exclusiveWarning = false
             val metadata = mutableMapOf<String, SourceMetadata>()
+            val voiceMarkers = master.markers
+                .filter(TimelineMarker::voiceCueEnabled)
+                .sortedBy { it.voiceCueStartFrames(master.metronome(project.defaultMetronome)) }
+                .take(MAX_TIMELINE_MARKERS)
             if (error == null) {
                 audio.resetTransport(); audio.clearTracks()
                 master.tracks.forEachIndexed { index, track ->
@@ -468,37 +684,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val raw = audio.trackMetadata(index)
                         if (raw.size >= 3 && raw[0] > 0) metadata[track.id] = SourceMetadata(raw[0].toInt(), raw[1].toInt(), raw[2])
                     } else {
-                        error = "${track.name}: ${decodeError ?: "audio no compatible (código $result)"}"
+                        error = "${track.name}: ${decodeError ?: uiText("audio no compatible (código $result)", "unsupported audio (code $result)")}"
                     }
+                }
+                voiceMarkers.forEachIndexed { cueIndex, marker ->
+                    if (error != null) return@forEachIndexed
+                    val file = voiceCueRenderer.cueFile(marker.id)
+                    if (!file.isFile) {
+                        error = uiText(
+                            "Cue de voz ${marker.label}: genera o desactiva la voz antes de reproducir",
+                            "Voice cue ${marker.label}: render or disable the voice before playback",
+                        )
+                        return@forEachIndexed
+                    }
+                    val index = master.tracks.size + cueIndex
+                    val result = runCatching {
+                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { audio.loadWavTrack(index, it.fd) }
+                    }.getOrDefault(-9)
+                    if (result != 0) error = uiText(
+                        "Cue de voz ${marker.label}: audio no compatible (código $result)",
+                        "Voice cue ${marker.label}: unsupported audio (code $result)",
+                    )
                 }
             }
             if (error == null) {
                 val inspected = master.copy(tracks = master.tracks.map { track -> metadata[track.id]?.let { track.copy(sourceMetadata = it) } ?: track })
                 replaceSelectedMaster(inspected)
                 repository.replaceProjects(_state.value.projects)
-                configureNativeMixer(project, inspected)
+                configureNativeMixer(project, inspected, voiceMarkers)
                 val outputRate = diagnostics.actualSampleRate.takeIf { it > 0 } ?: requestedSampleRate
                 if (outputRate > 0 && _state.value.timelineCursorFrames > 0) {
                     audio.seekTransport((_state.value.timelineCursorFrames.toDouble() * outputRate / TIMELINE_SAMPLE_RATE).roundToLong())
                 }
+                val exclusiveReady = performanceMode.activate(_state.value.settings.exclusivePerformanceMode)
+                exclusiveWarning = !exclusiveReady
                 audio.setToneEnabled(true)
                 loadedSelectionKey = selectionKey()
                 diagnostics = audio.diagnostics(requestedSampleRate)
             } else {
-                audio.resetTransport(); loadedSelectionKey = null
+                audio.resetTransport(); performanceMode.deactivate(); loadedSelectionKey = null
             }
             _state.update {
                 it.copy(openingOutput = false, diagnostics = diagnostics,
                     safetyStatus = if (error == null) SafetyStatus.WARNING else SafetyStatus.UNSAFE,
-                    message = error ?: "REPRODUCIENDO · ${master.name}")
+                    message = error ?: if (exclusiveWarning) {
+                        uiText(
+                            "REPRODUCIENDO · concede acceso a No molestar para el modo exclusivo",
+                            "PLAYING · grant Do Not Disturb access for exclusive mode",
+                        )
+                    } else "${uiText("REPRODUCIENDO", "PLAYING")} · ${master.name}")
             }
         }
     }
 
     fun stop() {
         audio.resetTransport()
+        performanceMode.deactivate()
         _state.update { it.copy(diagnostics = audio.diagnostics(requestedSampleRate), timelineCursorFrames = 0,
-            tracks = it.tracks.map { t -> t.copy(peak = 0f) }, message = "DETENIDO · 00:00") }
+            tracks = it.tracks.map { t -> t.copy(peak = 0f) }, message = "${uiText("DETENIDO", "STOPPED")} · 00:00") }
     }
 
     fun seekToFraction(fraction: Float) {
@@ -508,7 +751,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun panic() {
         audio.panic()
-        _state.update { it.copy(diagnostics = audio.diagnostics(requestedSampleRate), safetyStatus = SafetyStatus.UNSAFE, message = "MUTE ALL · revalidacion requerida") }
+        performanceMode.deactivate()
+        _state.update { it.copy(diagnostics = audio.diagnostics(requestedSampleRate), safetyStatus = SafetyStatus.UNSAFE,
+            message = uiText("MUTE ALL · revalidación requerida", "MUTE ALL · revalidation required")) }
     }
 
     fun setTrackGain(index: Int, gainDb: Float) { updateTrack(index) { it.copy(gainDb = gainDb) }; audio.setTrackGain(index, AudioMath.dbToLinear(gainDb)) }
@@ -526,8 +771,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(stereoSplit = enabled, message = if (enabled) "STEREO SPLIT · L MAIN / R MONITOR" else "SINGLE MIX") }
     }
 
-    fun setLanguage(value: AppLanguage) = updateSettings { it.copy(language = value) }
+    fun setLanguage(value: AppLanguage) {
+        if (_state.value.settings.language == value) return
+        updateSettings { it.copy(language = value) }
+        _state.update { it.copy(message = uiText("Idioma actualizado", "Language updated")) }
+        _state.value.projects.asSequence()
+            .flatMap { it.playlist.asSequence() }
+            .flatMap { it.markers.asSequence() }
+            .filter(TimelineMarker::voiceCueEnabled)
+            .forEach(::renderVoiceCue)
+    }
     fun setKeepScreenAwake(value: Boolean) = updateSettings { it.copy(keepScreenAwake = value) }
+    fun setExclusivePerformanceMode(value: Boolean) {
+        updateSettings { it.copy(exclusivePerformanceMode = value) }
+        if (!value) performanceMode.deactivate()
+        else if (!performanceMode.hasNotificationPolicyAccess) performanceMode.openNotificationPolicyAccessSettings()
+        refreshProfessionalModeAccess()
+    }
+
+    fun refreshProfessionalModeAccess() = _state.update {
+        it.copy(notificationPolicyAccessGranted = performanceMode.hasNotificationPolicyAccess)
+    }
     fun setConfirmDestructiveActions(value: Boolean) = updateSettings { it.copy(confirmDestructiveActions = value) }
     fun setDefaultStemType(value: TrackType) = updateSettings { it.copy(defaultStemType = value) }
     fun setDefaultMonitorSendDb(value: Float) = updateSettings { it.copy(defaultMonitorSendDb = value.coerceIn(-60f, 0f)) }
@@ -678,24 +942,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         applyLiveMetronome(); scheduleSave()
     }
 
-    private fun configureNativeMixer(project: Project, master: MasterTrack) {
+    private fun configureNativeMixer(project: Project, master: MasterTrack, voiceMarkers: List<TimelineMarker> = emptyList()) {
         val outputRate = _state.value.diagnostics.actualSampleRate.takeIf { it > 0 } ?: requestedSampleRate.takeIf { it > 0 } ?: TIMELINE_SAMPLE_RATE
         master.tracks.forEachIndexed { index, track ->
+            val clickReference = track.id == master.clickReferenceTrackId
             audio.setTrackGain(index, AudioMath.dbToLinear(track.gainDb)); audio.setTrackPan(index, track.pan)
             audio.setTrackMuted(index, track.muted); audio.setTrackSoloed(index, track.soloed)
-            audio.setTrackSends(index, AudioMath.dbToLinear(track.mainSendDb), AudioMath.dbToLinear(track.monitorSendDb))
+            audio.setTrackSoloSafe(index, false)
+            audio.setTrackSends(
+                index,
+                if (clickReference) 0f else AudioMath.dbToLinear(track.mainSendDb),
+                if (clickReference) AudioMath.dbToLinear(track.monitorSendDb.coerceAtLeast(-60f)) else AudioMath.dbToLinear(track.monitorSendDb),
+            )
             audio.setTrackStartOffset(index, (track.startSeconds() * outputRate).toLong())
             audio.setTrackSourceRange(index, track.sourceStartFrame, track.sourceEndFrameExclusive ?: -1)
+        }
+        val metronome = master.metronome(project.defaultMetronome)
+        voiceMarkers.forEachIndexed { cueIndex, marker ->
+            val index = master.tracks.size + cueIndex
+            audio.setTrackGain(index, AudioMath.dbToLinear(VOICE_CUE_GAIN_DB))
+            audio.setTrackPan(index, 0f)
+            audio.setTrackMuted(index, false)
+            audio.setTrackSoloed(index, false)
+            audio.setTrackSoloSafe(index, true)
+            audio.setTrackSends(index, 0f, 1f)
+            val cueStart = marker.voiceCueStartFrames(metronome)
+            audio.setTrackStartOffset(index, (cueStart.toDouble() * outputRate / TIMELINE_SAMPLE_RATE).roundToLong())
+            audio.setTrackSourceRange(index, 0, -1)
         }
         audio.setTimelineDuration((master.durationSeconds() * outputRate).roundToLong())
         val combinedGainDb = (project.masterGainDb + master.gainDb).coerceIn(-120f, 6f)
         audio.setMasterGainPan(AudioMath.dbToLinear(combinedGainDb), (project.masterPan + master.pan).coerceIn(-1f, 1f))
         audio.setOutputMode(_state.value.stereoSplit)
-        configureNativeMetronome(master.metronome(project.defaultMetronome))
+        configureNativeMetronome(metronome, nativeClickAllowed = master.clickReferenceTrackId == null)
     }
 
-    private fun configureNativeMetronome(value: MetronomeSettings) = audio.configureMetronome(
-        value.enabled, value.bpm, value.numerator, value.denominator, AudioMath.dbToLinear(value.gainDb), value.mainEnabled,
+    private fun configureNativeMetronome(value: MetronomeSettings, nativeClickAllowed: Boolean = true) = audio.configureMetronome(
+        value.enabled && nativeClickAllowed, value.bpm, value.numerator, value.denominator, AudioMath.dbToLinear(value.gainDb), value.mainEnabled,
     )
 
     private fun applyLiveMaster() {
@@ -707,7 +990,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun applyLiveMetronome() {
         if (loadedSelectionKey != selectionKey()) return
         val project = selectedProject() ?: return; val master = selectedMasterTrack() ?: return
-        configureNativeMetronome(master.metronome(project.defaultMetronome))
+        configureNativeMetronome(master.metronome(project.defaultMetronome), nativeClickAllowed = master.clickReferenceTrackId == null)
     }
 
     private fun updateTrack(index: Int, transform: (Track) -> Track) {
@@ -740,8 +1023,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun timelineSnapshot(): TimelineEditSnapshot? {
         val projectId = _state.value.selectedProjectId ?: return null
-        val master = selectedMasterTrack() ?: return null
-        return TimelineEditSnapshot(projectId, master.id, master.tracks, _state.value.selectedTimelineTrackId)
+        val project = selectedProject() ?: return null
+        return TimelineEditSnapshot(
+            projectId = projectId,
+            playlist = project.playlist,
+            selectedMasterTrackId = _state.value.selectedMasterTrackId,
+            selectedTrackId = _state.value.selectedTimelineTrackId,
+        )
     }
 
     private fun recordTimelineEdit() {
@@ -757,14 +1045,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun restoreTimelineSnapshot(snapshot: TimelineEditSnapshot, message: String) {
-        val master = selectedMasterTrack() ?: return
-        replaceSelectedMaster(master.copy(tracks = snapshot.tracks))
-        val selectedId = snapshot.selectedTrackId?.takeIf { id -> snapshot.tracks.any { it.id == id } }
-            ?: snapshot.tracks.firstOrNull()?.id
-        _state.update { it.copy(selectedTimelineTrackId = selectedId, message = message) }
+        val project = selectedProject() ?: return
+        val restoredProject = project.copy(playlist = snapshot.playlist)
+        val selectedMaster = snapshot.selectedMasterTrackId
+            ?.let { id -> restoredProject.playlist.firstOrNull { it.id == id } }
+            ?: restoredProject.playlist.firstOrNull()
+        val selectedId = snapshot.selectedTrackId?.takeIf { id -> selectedMaster?.tracks?.any { it.id == id } == true }
+            ?: selectedMaster?.tracks?.firstOrNull()?.id
+        val projects = _state.value.projects.map { if (it.id == snapshot.projectId) restoredProject else it }
+        _state.update {
+            it.copy(
+                projects = projects,
+                selectedMasterTrackId = selectedMaster?.id,
+                selectedTimelineTrackId = selectedId,
+                tracks = mixerTracks(selectedMaster, analysisCache),
+                message = message,
+            )
+        }
         invalidateAudio()
         saveNow()
         analyzeTracks(selectedMasterTrack())
+        selectedMaster?.markers?.filter(TimelineMarker::voiceCueEnabled)?.forEach(::renderVoiceCue)
         updateTimelineHistoryAvailability()
     }
 
@@ -809,7 +1110,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun invalidateAudio() { audio.resetTransport(); audio.clearTracks(); loadedSelectionKey = null }
+    private fun invalidateAudio() { audio.resetTransport(); performanceMode.deactivate(); audio.clearTracks(); loadedSelectionKey = null }
+    private fun uiText(spanish: String, english: String): String =
+        if (_state.value.settings.language == AppLanguage.SPANISH) spanish else english
+
     private fun updateSettings(transform: (AppSettings) -> AppSettings) {
         _state.update { current -> current.copy(settings = transform(current.settings)) }
         settingsRepository.write(_state.value.settings)
@@ -822,15 +1126,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val changed = previousDeviceIds?.let { it != ids } == true && _state.value.diagnostics.outputOpen
         previousDeviceIds = ids
         if (changed) {
-            audio.panic(); audio.close(); loadedSelectionKey = null
-            _state.update { it.copy(devices = devices, diagnostics = EngineDiagnostics(requestedSampleRate = requestedSampleRate), safetyStatus = SafetyStatus.UNSAFE, message = "RUTA CAMBIO · salida detenida") }
+            audio.panic(); performanceMode.deactivate(); audio.close(); loadedSelectionKey = null
+            _state.update { it.copy(devices = devices, diagnostics = EngineDiagnostics(requestedSampleRate = requestedSampleRate), safetyStatus = SafetyStatus.UNSAFE,
+                message = uiText("RUTA CAMBIÓ · salida detenida", "ROUTE CHANGED · output stopped")) }
         } else _state.update { it.copy(devices = devices) }
     }
 
-    override fun onCleared() { hardware.stop(); audio.close(); super.onCleared() }
+    override fun onCleared() { hardware.stop(); performanceMode.deactivate(); audio.close(); super.onCleared() }
 }
 
 private const val TIMELINE_HISTORY_LIMIT = 50
+private const val MAX_TIMELINE_MARKERS = 32
+private const val VOICE_CUE_GAIN_DB = -3f
 
 private fun mixerTracks(master: MasterTrack?, analysisCache: Map<String, WavAnalysis>): List<MixerTrackUi> = master?.tracks?.mapIndexed { index, track ->
     val colors = longArrayOf(0xFF43D3B3, 0xFF5C8DFF, 0xFFB778FF, 0xFFF4B64A, 0xFFE95A64, 0xFF55C98A)
@@ -850,7 +1157,9 @@ private fun mixerTracks(master: MasterTrack?, analysisCache: Map<String, WavAnal
         gainDb = track.gainDb, pan = track.pan, muted = track.muted, soloed = track.soloed,
         mainSendLabel = if (track.mainSendDb == SILENCE_DB) "OFF" else "${track.mainSendDb.toInt()} dB",
         monitorSendLabel = if (track.monitorSendDb == SILENCE_DB) "OFF" else "${track.monitorSendDb.toInt()} dB",
-        startOffsetFrames = track.startOffsetFrames, durationSeconds = track.durationSeconds(), waveformPeaks = waveform,
+        startOffsetFrames = track.startOffsetFrames, durationSeconds = track.durationSeconds(), hasAudioSource = track.sourceUri != null,
+        isClickReference = track.id == master.clickReferenceTrackId,
+        waveformPeaks = waveform,
     )
 } ?: emptyList()
 

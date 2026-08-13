@@ -8,6 +8,10 @@ The engine converts the longest loaded source length into output-stream frames a
 
 The allocation-free callback also renders a configurable metronome from the same transport clock. BPM, numerator, denominator, level, enabled state, and explicit MAIN audition are atomic controls. Click always feeds MONITOR when enabled; MAIN audition defaults off. In Stereo Split this keeps music/FOH on physical left and click/monitor on physical right.
 
+A master track can designate one user stem as its click reference. The designation is persisted, converts the stem to the CLICK role, forces its MAIN send to negative infinity, and suspends the native click generator while that master is loaded. The configured BPM and meter remain authoritative for the visual grid, snapping, and voice-cue lead timing; LiveTracks does not infer tempo from the reference audio.
+
+Timeline voice markers never invoke Android TTS during playback. Editing synthesizes each enabled marker to a cached WAV, validates the file, and loads it before transport start. Up to 32 cue sources occupy internal slots after the 16 user stems. Cue slots are solo-safe and route at negative infinity to MAIN and unity to MONITOR; their absolute start is the marker frame minus the configured number of effective metronome beats.
+
 The Oboe stream is opened for preflight but started only with Play and explicitly paused with Pause/Stop. Natural end is detected in the callback, then the UI worker pauses the stream outside realtime context. This prevents an idle emulator or device from accumulating output underruns while the transport is stopped.
 
 The current decoder preloads each WAV, capped at 512 MB, so this is functional synchronized WAV playback but not the final long-show memory architecture. The next engine milestone replaces preloading with decoder workers and single-producer/single-consumer ring buffers while preserving the callback contract. The realtime callback remains limited to bounded DSP, preallocated buffers, atomics, and counters; it must not allocate, log, decode, access storage, or wait.

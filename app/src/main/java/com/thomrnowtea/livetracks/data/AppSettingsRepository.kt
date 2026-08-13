@@ -8,6 +8,7 @@ enum class AppLanguage { SPANISH, ENGLISH }
 data class AppSettings(
     val language: AppLanguage = AppLanguage.SPANISH,
     val keepScreenAwake: Boolean = true,
+    val exclusivePerformanceMode: Boolean = false,
     val confirmDestructiveActions: Boolean = true,
     val defaultStemType: TrackType = TrackType.MUSIC,
     val defaultMonitorSendDb: Float = -6f,
@@ -27,6 +28,7 @@ class SharedPreferencesAppSettingsRepository(context: Context) : AppSettingsRepo
     override fun read() = AppSettings(
         language = enumValueOrDefault(preferences.getString("language", null), AppLanguage.SPANISH),
         keepScreenAwake = preferences.getBoolean("keep_screen_awake", true),
+        exclusivePerformanceMode = preferences.getBoolean("exclusive_performance_mode", false),
         confirmDestructiveActions = preferences.getBoolean("confirm_destructive_actions", true),
         defaultStemType = enumValueOrDefault(preferences.getString("default_stem_type", null), TrackType.MUSIC),
         defaultMonitorSendDb = preferences.getFloat("default_monitor_send_db", -6f).coerceIn(-60f, 0f),
@@ -39,6 +41,7 @@ class SharedPreferencesAppSettingsRepository(context: Context) : AppSettingsRepo
         preferences.edit()
             .putString("language", value.language.name)
             .putBoolean("keep_screen_awake", value.keepScreenAwake)
+            .putBoolean("exclusive_performance_mode", value.exclusivePerformanceMode)
             .putBoolean("confirm_destructive_actions", value.confirmDestructiveActions)
             .putString("default_stem_type", value.defaultStemType.name)
             .putFloat("default_monitor_send_db", value.defaultMonitorSendDb)

@@ -2,6 +2,7 @@ package com.thomrnowtea.livetracks
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -47,6 +48,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -73,6 +76,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -84,9 +88,11 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -114,6 +120,8 @@ import com.thomrnowtea.livetracks.domain.Project
 import com.thomrnowtea.livetracks.domain.SafetyStatus
 import com.thomrnowtea.livetracks.domain.TIMELINE_SAMPLE_RATE
 import com.thomrnowtea.livetracks.domain.TrackType
+import com.thomrnowtea.livetracks.domain.TimelineMarker
+import com.thomrnowtea.livetracks.domain.TimelineMarkerKind
 import com.thomrnowtea.livetracks.domain.UpdateFailure
 import com.thomrnowtea.livetracks.data.AppLanguage
 import kotlin.math.PI
@@ -188,14 +196,17 @@ private val ConsoleColors = darkColorScheme(
 @Composable
 fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshInstallPermission() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshInstallPermission()
+        viewModel.refreshProfessionalModeAccess()
+    }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { viewModel.importTracks(it) }
     val view = LocalView.current
     SideEffect { view.keepScreenOn = state.settings.keepScreenAwake }
     MaterialTheme(colorScheme = ConsoleColors, typography = DawTypography) {
         val systemDensity = LocalDensity.current
         val readableDensity = remember(systemDensity.density, systemDensity.fontScale) {
-            Density(systemDensity.density, max(systemDensity.fontScale, 1.12f))
+            Density(systemDensity.density, max(systemDensity.fontScale, 1.18f))
         }
         CompositionLocalProvider(
             LocalAppLanguage provides state.settings.language,
@@ -205,17 +216,31 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
             BoxWithConstraints(Modifier.fillMaxSize().padding(insets).background(Bg)) {
                 val wide = maxWidth >= 700.dp
                 val addAudio = { filePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }
-                if (wide) Row(Modifier.fillMaxSize()) {
+                if (state.workspace == Workspace.PLAYLIST && state.playlistPerformanceMode) {
+                    PerformancePlaylistScreen(state, viewModel)
+                } else if (wide) Row(Modifier.fillMaxSize()) {
                     SideNavigation(state.workspace, viewModel::setWorkspace)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
-                        CompactContextBar(state)
+                        CompactContextBar(state, viewModel::setTrackWorkspace)
                         WorkspaceContent(state, viewModel, addAudio, Modifier.weight(1f))
-                        if (state.workspace != Workspace.SETTINGS) CompactTransport(state, viewModel::playPause, viewModel::stop, viewModel::seekToFraction, viewModel::panic)
+                        if (state.workspace != Workspace.SETTINGS) CompactTransport(
+                            state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
+                            viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
+                            openTimeline = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.TIMELINE) },
+                            openMixer = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.MIXER) },
+                            openMaster = { viewModel.setWorkspace(Workspace.MASTER) },
+                        )
                     }
                 } else Column(Modifier.fillMaxSize()) {
-                    CompactContextBar(state)
+                    CompactContextBar(state, viewModel::setTrackWorkspace)
                     WorkspaceContent(state, viewModel, addAudio, Modifier.weight(1f))
-                    if (state.workspace != Workspace.SETTINGS) CompactTransport(state, viewModel::playPause, viewModel::stop, viewModel::seekToFraction, viewModel::panic)
+                    if (state.workspace != Workspace.SETTINGS) CompactTransport(
+                        state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
+                        viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
+                        openTimeline = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.TIMELINE) },
+                        openMixer = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.MIXER) },
+                        openMaster = { viewModel.setWorkspace(Workspace.MASTER) },
+                    )
                     BottomNavigation(state.workspace, viewModel::setWorkspace)
                 }
             }
@@ -226,7 +251,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
 
 @Composable
 private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().clipToBounds().padding(horizontal = 8.dp, vertical = 4.dp)) {
+    Box(modifier.fillMaxWidth().clipToBounds().padding(horizontal = 12.dp, vertical = 8.dp)) {
         when (state.workspace) {
             Workspace.PROJECTS -> ProjectsScreen(state, vm)
             Workspace.PLAYLIST -> PlaylistScreen(state, vm)
@@ -239,14 +264,19 @@ private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: ()
 
 @Composable
 private fun BottomNavigation(active: Workspace, select: (Workspace) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(64.dp).background(Color(0xFF1A1B1D)).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(52.dp).background(Color(0xFF1A1B1D)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Workspace.entries.forEach { item ->
             val selected = item == active
-            Surface(onClick = { select(item) }, modifier = Modifier.weight(1f).height(56.dp), color = if (selected) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(9.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    VectorIcon(item.iconRes(), null, if (selected) Mint else TextMuted, Modifier.size(24.dp))
-                    Spacer(Modifier.height(3.dp))
-                    Text(item.railLabel(), color = if (selected) TextMain else TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            val itemLabel = item.railLabel()
+            Surface(
+                onClick = { select(item) },
+                modifier = Modifier.weight(1f).height(44.dp).semantics { contentDescription = itemLabel; role = Role.Button },
+                color = if (selected) Mint.copy(alpha = .14f) else Color.Transparent,
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    VectorIcon(item.iconRes(), null, if (selected) Mint else TextMuted, Modifier.size(23.dp))
+                    if (selected) Box(Modifier.align(Alignment.BottomCenter).width(20.dp).height(2.dp).background(Mint, RoundedCornerShape(2.dp)))
                 }
             }
         }
@@ -256,7 +286,7 @@ private fun BottomNavigation(active: Workspace, select: (Workspace) -> Unit) {
 @Composable
 private fun SideNavigation(active: Workspace, select: (Workspace) -> Unit) {
     Column(
-        Modifier.width(80.dp).fillMaxHeight().background(Color(0xFF1A1B1D)).padding(vertical = 8.dp),
+        Modifier.width(64.dp).fillMaxHeight().background(Color(0xFF1A1B1D)).padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Surface(Modifier.size(48.dp), color = Raised, shape = RoundedCornerShape(6.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Border)) {
@@ -265,30 +295,23 @@ private fun SideNavigation(active: Workspace, select: (Workspace) -> Unit) {
         Spacer(Modifier.height(8.dp))
         Workspace.entries.filterNot { it == Workspace.SETTINGS }.forEach { item ->
             val selected = item == active
+            val itemLabel = item.railLabel()
             Surface(
                 onClick = { select(item) },
-                modifier = Modifier.width(72.dp).height(60.dp),
+                modifier = Modifier.size(52.dp).semantics { contentDescription = itemLabel; role = Role.Button },
                 color = if (selected) Mint.copy(alpha = .14f) else Color.Transparent,
                 shape = RoundedCornerShape(10.dp),
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    VectorIcon(item.iconRes(), null, if (selected) Mint else TextMuted, Modifier.size(27.dp))
-                    Spacer(Modifier.height(4.dp))
-                    Text(item.railLabel(), color = if (selected) TextMain else TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                }
+                Box(contentAlignment = Alignment.Center) { VectorIcon(item.iconRes(), null, if (selected) Mint else TextMuted, Modifier.size(25.dp)) }
             }
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(4.dp))
         }
         Spacer(Modifier.weight(1f))
         val settingsSelected = active == Workspace.SETTINGS
-        Surface(onClick = { select(Workspace.SETTINGS) }, modifier = Modifier.width(72.dp).height(60.dp), color = if (settingsSelected) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(10.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                VectorIcon(R.drawable.ic_ui_settings, null, if (settingsSelected) Mint else TextMuted, Modifier.size(27.dp))
-                Spacer(Modifier.height(4.dp))
-                Text(tr("AJUSTES", "SETTINGS"), color = if (settingsSelected) TextMain else TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-            }
+        val settingsLabel = tr("Ajustes", "Settings")
+        Surface(onClick = { select(Workspace.SETTINGS) }, modifier = Modifier.size(52.dp).semantics { contentDescription = settingsLabel; role = Role.Button }, color = if (settingsSelected) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(10.dp)) {
+            Box(contentAlignment = Alignment.Center) { VectorIcon(R.drawable.ic_ui_settings, null, if (settingsSelected) Mint else TextMuted, Modifier.size(25.dp)) }
         }
-        Text("0.1", color = TextMuted.copy(alpha = .55f), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
     }
 }
 
@@ -308,27 +331,53 @@ private fun Workspace.iconRes() = when (this) {
 }
 
 @Composable
-private fun CompactContextBar(state: MainUiState) {
+private fun CompactContextBar(state: MainUiState, setTrackWorkspace: (TrackWorkspace) -> Unit) {
     val project = state.selectedProject(); val master = state.selectedMaster()
     val metro = master?.metronome(project?.defaultMetronome ?: MetronomeSettings())
-    Row(
-        Modifier.fillMaxWidth().height(52.dp).background(Color(0xFF1A1B1D)).padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Text(project?.name ?: tr("Sin proyecto", "No project"), Modifier.weight(1f, fill = false), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (master != null) {
-                Text("  /  ", color = TextMuted, fontSize = 12.sp)
-                Text(master.name, Modifier.weight(1f, fill = false), color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    BoxWithConstraints(Modifier.fillMaxWidth().height(52.dp).background(Color(0xFF1A1B1D))) {
+        val compact = maxWidth < 600.dp
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = if (compact) 8.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                Text(project?.name ?: tr("Sin proyecto", "No project"), Modifier.weight(1f, fill = false), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (master != null && !compact) {
+                    Text("  /  ", color = TextMuted, fontSize = 12.sp)
+                    Text(master.name, Modifier.weight(1f, fill = false), color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
+            if (state.workspace == Workspace.TRACK && master != null) {
+                ContextModeButton(R.drawable.ic_ui_timeline, tr("Timeline", "Timeline"), state.trackWorkspace == TrackWorkspace.TIMELINE) {
+                    setTrackWorkspace(TrackWorkspace.TIMELINE)
+                }
+                Spacer(Modifier.width(4.dp))
+                ContextModeButton(R.drawable.ic_ui_mixer, tr("Consola de mezcla", "Mix console"), state.trackWorkspace == TrackWorkspace.MIXER) {
+                    setTrackWorkspace(TrackWorkspace.MIXER)
+                }
+                Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
+            }
+            if (!compact) {
+                Text(metro?.let { "${it.bpm.roundToInt()} BPM  ·  ${it.numerator}/${it.denominator}" } ?: "— BPM", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                Spacer(Modifier.width(16.dp))
+            }
+            val live = state.diagnostics.toneEnabled
+            Box(Modifier.size(8.dp).background(if (live) Mint else Amber, CircleShape))
+            Spacer(Modifier.width(6.dp))
+            Text(if (live) "LIVE" else "READY", color = if (live) Mint else Amber, fontSize = 10.sp, fontWeight = FontWeight.Black)
         }
-        Text(metro?.let { "${it.bpm.roundToInt()} BPM  ·  ${it.numerator}/${it.denominator}" } ?: "— BPM", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-        Spacer(Modifier.width(16.dp))
-        val live = state.diagnostics.toneEnabled
-        Box(Modifier.size(8.dp).background(if (live) Mint else Amber, CircleShape))
-        Spacer(Modifier.width(6.dp))
-        Text(if (live) "LIVE" else "READY", color = if (live) Mint else Amber, fontSize = 10.sp, fontWeight = FontWeight.Black)
     }
+}
+
+@Composable
+private fun ContextModeButton(iconRes: Int, label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(40.dp).semantics { contentDescription = label; role = Role.Button },
+        color = if (selected) Blue else Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) Blue else Border),
+        shape = RoundedCornerShape(7.dp),
+    ) { Box(contentAlignment = Alignment.Center) { VectorIcon(iconRes, null, if (selected) Color.White else TextMuted, Modifier.size(22.dp)) } }
 }
 
 @Composable
@@ -347,8 +396,8 @@ private fun AppHeader(state: MainUiState, select: (Workspace) -> Unit) {
                 }
             }
             Column(Modifier.widthIn(min = 180.dp).padding(horizontal = 12.dp)) {
-                Text(project?.name ?: "Sin proyecto", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(master?.name ?: "Selecciona una pista", fontSize = 10.sp, color = TextMuted, maxLines = 1)
+                Text(project?.name ?: tr("Sin proyecto", "No project"), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(master?.name ?: tr("Selecciona una pista", "Select a track"), fontSize = 10.sp, color = TextMuted, maxLines = 1)
             }
             val metro = master?.metronome(project?.defaultMetronome ?: MetronomeSettings())
             HeaderValue("BPM", metro?.bpm?.let { "%.0f".format(it) } ?: "—")
@@ -400,10 +449,14 @@ private fun ProjectsScreen(state: MainUiState, vm: MainViewModel) {
             Text("  ${state.projects.size}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
             Spacer(Modifier.weight(1f))
             if (selected != null) {
-                TextButton(onClick = { dialog = ProjectDialog.Rename }) { Text(tr("RENOMBRAR", "RENAME"), fontSize = 8.sp) }
-                TextButton(onClick = { if (state.settings.confirmDestructiveActions) dialog = ProjectDialog.Delete else vm.deleteSelectedProject() }, colors = ButtonDefaults.textButtonColors(contentColor = Red)) { Text(tr("ELIMINAR", "DELETE"), fontSize = 8.sp) }
+                DawIconButton(DawIcon.EDIT, tr("Renombrar proyecto", "Rename project")) { dialog = ProjectDialog.Rename }
+                Spacer(Modifier.width(4.dp))
+                DawIconButton(DawIcon.DELETE, tr("Eliminar proyecto", "Delete project"), danger = true) {
+                    if (state.settings.confirmDestructiveActions) dialog = ProjectDialog.Delete else vm.deleteSelectedProject()
+                }
+                Spacer(Modifier.width(4.dp))
             }
-            PrimarySmall(tr("NUEVO", "NEW")) { dialog = ProjectDialog.Create }
+            if (state.projects.isNotEmpty()) DawIconButton(DawIcon.ADD, tr("Nuevo proyecto", "New project"), selected = true) { dialog = ProjectDialog.Create }
         }
         Surface(Modifier.weight(1f).fillMaxWidth(), color = Panel, shape = RoundedCornerShape(10.dp)) {
             if (state.projects.isEmpty()) EmptyState(tr("Sin proyectos", "No projects"), tr("Crea un show para empezar.", "Create a show to get started."), tr("CREAR", "CREATE"), onClick = { dialog = ProjectDialog.Create })
@@ -417,15 +470,15 @@ private fun ProjectsScreen(state: MainUiState, vm: MainViewModel) {
                             Text((index + 1).toString().padStart(2, '0'), color = if (active) Mint else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.width(if (compact) 10.dp else 16.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(project.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
-                                Text("${project.playlist.size} ${tr("PISTAS", "TRACKS")}   ·   ${project.playlist.sumOf { it.tracks.size }} STEMS", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 8.sp)
+                                Text(project.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                                Text("${project.playlist.size} ${tr("PISTAS", "TRACKS")}   ·   ${project.playlist.sumOf { it.tracks.size }} STEMS", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
                             }
                             if (!compact) {
                                 ConsoleReadout("OUTPUT", "${formatDb(project.masterGainDb).replace(" dB", "")}  ${panLabel(project.masterPan)}", Mint)
-                                OutlinedButton(onClick = { vm.selectProject(project.id); vm.setWorkspace(Workspace.MASTER) }, modifier = Modifier.height(34.dp), contentPadding = PaddingValues(horizontal = 10.dp)) { Text("MASTER", fontSize = 8.sp) }
-                                Spacer(Modifier.width(6.dp))
+                                DawIconButton(DawIcon.MASTER, tr("Abrir master", "Open master")) { vm.selectProject(project.id); vm.setWorkspace(Workspace.MASTER) }
+                                Spacer(Modifier.width(4.dp))
                             }
-                            Button(onClick = { vm.selectProject(project.id); vm.setWorkspace(Workspace.PLAYLIST) }, modifier = Modifier.height(38.dp), colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Bg), shape = RoundedCornerShape(8.dp)) { Text(tr("ABRIR", "OPEN"), fontSize = 9.sp, fontWeight = FontWeight.Black) }
+                            DawIconButton(DawIcon.OPEN, tr("Abrir playlist", "Open setlist"), selected = true) { vm.selectProject(project.id); vm.setWorkspace(Workspace.PLAYLIST) }
                             }
                         }
                     }
@@ -448,6 +501,7 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
     var addDialog by remember { mutableStateOf(false) }
     var renameDialog by remember { mutableStateOf(false) }
     var deleteDialog by remember { mutableStateOf(false) }
+    var playlistMenuExpanded by remember { mutableStateOf(false) }
     val project = state.selectedProject()
     val selected = state.selectedMaster()
     if (project == null) {
@@ -455,22 +509,39 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
         return
     }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Playlist", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("  ${project.playlist.size} cues", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
-            Spacer(Modifier.weight(1f))
-            if (selected != null) {
-                TextButton(onClick = { renameDialog = true }) { Text(tr("RENOMBRAR", "RENAME"), fontSize = 8.sp) }
-                DawIconButton(
-                    icon = DawIcon.DELETE,
-                    label = tr("Quitar pista master", "Remove master track"),
-                    danger = true,
-                    onClick = { if (state.settings.confirmDestructiveActions) deleteDialog = true else vm.deleteSelectedMasterTrack() },
-                )
-                OutlinedButton(onClick = { vm.setWorkspace(Workspace.MASTER) }, modifier = Modifier.height(32.dp), contentPadding = PaddingValues(horizontal = 10.dp)) { Text("MASTER", fontSize = 8.sp) }
-                Spacer(Modifier.width(6.dp))
+        if (state.playlistEditBarExpanded) {
+            Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Playlist", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("${project.playlist.size} cues", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                }
+                DawIconButton(DawIcon.STAGE, tr("Entrar al modo escenario", "Enter stage mode"), enabled = project.playlist.isNotEmpty(), selected = true) {
+                    vm.setPlaylistPerformanceMode(true)
+                }
+                Spacer(Modifier.width(4.dp))
+                DawIconButton(DawIcon.ADD, tr("Nueva pista master", "New master track")) { addDialog = true }
+                Spacer(Modifier.width(4.dp))
+                Box {
+                    DawIconButton(DawIcon.MORE, tr("Más acciones de playlist", "More setlist actions")) { playlistMenuExpanded = true }
+                    DropdownMenu(expanded = playlistMenuExpanded, onDismissRequest = { playlistMenuExpanded = false }) {
+                        TimelineMenuItem(DawIcon.EDIT, tr("Renombrar pista", "Rename track"), selected != null) { playlistMenuExpanded = false; renameDialog = true }
+                        TimelineMenuItem(DawIcon.MASTER, tr("Abrir master", "Open master"), selected != null) { playlistMenuExpanded = false; vm.setWorkspace(Workspace.MASTER) }
+                        TimelineMenuItem(DawIcon.DELETE, tr("Quitar pista master", "Remove master track"), selected != null, danger = true) {
+                            playlistMenuExpanded = false
+                            if (state.settings.confirmDestructiveActions) deleteDialog = true else vm.deleteSelectedMasterTrack()
+                        }
+                    }
+                }
+                Spacer(Modifier.width(4.dp))
+                CompactIconButton(R.drawable.ic_ui_arrow_up, tr("Minimizar acciones", "Collapse actions")) { vm.setPlaylistEditBarExpanded(false) }
             }
-            PrimarySmall(tr("PISTA", "TRACK")) { addDialog = true }
+        } else Surface(onClick = { vm.setPlaylistEditBarExpanded(true) }, modifier = Modifier.fillMaxWidth().height(32.dp), color = Color(0xFF191B1D), shape = RoundedCornerShape(8.dp)) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Playlist", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("  ${project.playlist.size}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                Spacer(Modifier.weight(1f))
+                VectorIcon(R.drawable.ic_ui_arrow_down, tr("Restaurar acciones", "Expand actions"), TextMuted, Modifier.size(18.dp))
+            }
         }
         Surface(Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(10.dp)) {
             if (project.playlist.isEmpty()) {
@@ -495,6 +566,7 @@ private fun PlaylistScreen(state: MainUiState, vm: MainViewModel) {
 @Composable
 private fun PlaylistRow(index: Int, item: MasterTrack, defaultMetronome: MetronomeSettings, active: Boolean, select: () -> Unit, go: () -> Unit, open: () -> Unit, moveUp: () -> Unit, moveDown: () -> Unit) {
     val metro = item.metronome(defaultMetronome)
+    val playLabel = tr("Reproducir pista", "Play track")
     Surface(onClick = select, color = if (active) Color(0xFF1B2730) else Color(0xFF121920), shape = RoundedCornerShape(7.dp)) {
         BoxWithConstraints {
             val compact = maxWidth < 600.dp
@@ -503,8 +575,8 @@ private fun PlaylistRow(index: Int, item: MasterTrack, defaultMetronome: Metrono
                 Text((index + 1).toString().padStart(2, '0'), color = if (active) Color.White else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 14.sp, fontWeight = FontWeight.Black)
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(item.name, fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
-                Text("${item.tracks.size} STEMS   ${timeText(item.durationSeconds())}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 8.sp)
+                Text(item.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+                Text("${item.tracks.size} STEMS   ${timeText(item.durationSeconds())}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
             }
             ConsoleReadout("TEMPO", "${metro.bpm.roundToInt()}  ${metro.numerator}/${metro.denominator}", if (metro.enabled) Amber else TextMuted)
             if (!compact) {
@@ -514,7 +586,9 @@ private fun PlaylistRow(index: Int, item: MasterTrack, defaultMetronome: Metrono
                 DawIconButton(DawIcon.TIMELINE, tr("Abrir pista", "Open track"), onClick = open)
                 Spacer(Modifier.width(6.dp))
             }
-            Button(onClick = go, modifier = Modifier.size(width = 62.dp, height = 42.dp), contentPadding = PaddingValues(0.dp), colors = ButtonDefaults.buttonColors(containerColor = if (active) Mint else Amber, contentColor = Bg), shape = RoundedCornerShape(8.dp)) { Text("GO", fontWeight = FontWeight.Black, fontSize = 11.sp) }
+            Surface(onClick = go, modifier = Modifier.size(44.dp).semantics { contentDescription = playLabel; role = Role.Button }, color = if (active) Mint else Amber, shape = CircleShape) {
+                Box(contentAlignment = Alignment.Center) { VectorIcon(R.drawable.ic_ui_play, null, Bg, Modifier.size(21.dp)) }
+            }
             Spacer(Modifier.width(8.dp))
             }
         }
@@ -522,10 +596,127 @@ private fun PlaylistRow(index: Int, item: MasterTrack, defaultMetronome: Metrono
 }
 
 @Composable
+private fun PerformancePlaylistScreen(state: MainUiState, vm: MainViewModel) {
+    BackHandler { vm.setPlaylistPerformanceMode(false) }
+    val project = state.selectedProject()
+    val master = state.selectedMaster()
+    if (project == null || project.playlist.isEmpty()) {
+        LaunchedEffect(Unit) { vm.setPlaylistPerformanceMode(false) }
+        return
+    }
+    val selectedIndex = project.playlist.indexOfFirst { it.id == master?.id }.coerceAtLeast(0)
+    val live = state.diagnostics.toneEnabled
+    BoxWithConstraints(Modifier.fillMaxSize().background(Bg)) {
+        val wide = maxWidth >= 700.dp
+        Column(Modifier.fillMaxSize()) {
+            Row(
+                Modifier.fillMaxWidth().height(if (wide) 56.dp else 64.dp).background(Color(0xFF101419)).padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(project.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(tr("MODO ESCENARIO", "STAGE MODE") + "  ·  ${selectedIndex + 1}/${project.playlist.size}", color = if (live) Mint else Amber, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+                Box(Modifier.size(8.dp).background(if (live) Mint else Amber, CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Text(if (live) "LIVE" else "READY", color = if (live) Mint else Amber, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.width(12.dp))
+                DawIconButton(DawIcon.EDIT, tr("Volver a edición", "Return to edit mode")) { vm.setPlaylistPerformanceMode(false) }
+            }
+            if (wide) Row(Modifier.weight(1f).fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PerformanceCueList(project, master, live, vm, Modifier.weight(1f).fillMaxHeight(), wide = true)
+                PerformanceTransportDeck(state, vm, Modifier.width(430.dp).fillMaxHeight(), wide = true)
+            } else Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PerformanceCueList(project, master, live, vm, Modifier.weight(1f).fillMaxWidth(), wide = false)
+                PerformanceTransportDeck(state, vm, Modifier.fillMaxWidth().height(244.dp), wide = false)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerformanceCueList(project: Project, selected: MasterTrack?, live: Boolean, vm: MainViewModel, modifier: Modifier, wide: Boolean) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Border.copy(alpha = .65f))) {
+        LazyColumn(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            itemsIndexed(project.playlist, key = { _, item -> item.id }) { index, item ->
+                val active = item.id == selected?.id
+                val metro = item.metronome(project.defaultMetronome)
+                Surface(
+                    onClick = { if (!active) vm.selectMasterTrack(item.id) },
+                    modifier = Modifier.fillMaxWidth().height(if (wide) 76.dp else 72.dp),
+                    color = if (active) Blue.copy(alpha = .27f) else Color(0xFF151A1F),
+                    border = BorderStroke(if (active) 2.dp else 1.dp, if (active) Mint else Border.copy(alpha = .45f)),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text((index + 1).toString().padStart(2, '0'), color = if (active) Mint else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${timeText(item.durationSeconds())}  ·  ${metro.bpm.roundToInt()} BPM  ·  ${metro.numerator}/${metro.denominator}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                        }
+                        if (active) {
+                            Box(Modifier.size(8.dp).background(if (live) Mint else Amber, CircleShape))
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (live) "LIVE" else tr("ARMADA", "ARMED"), color = if (live) Mint else Amber, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerformanceTransportDeck(state: MainUiState, vm: MainViewModel, modifier: Modifier, wide: Boolean) {
+    val project = state.selectedProject() ?: return
+    val master = state.selectedMaster() ?: return
+    val index = project.playlist.indexOfFirst { it.id == master.id }
+    val canPrevious = index > 0
+    val canNext = index in 0 until project.playlist.lastIndex
+    val rate = state.diagnostics.actualSampleRate.takeIf { it > 0 } ?: 48_000
+    val engineDuration = state.diagnostics.durationFrames.toDouble() / rate
+    val total = maxOf(engineDuration, master.durationSeconds())
+    val position = if (state.diagnostics.durationFrames > 0) state.diagnostics.renderedFrames.toDouble() / rate else 0.0
+    val fraction = if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f
+    val nextName = project.playlist.getOrNull(index + 1)?.name
+    Surface(modifier, color = Color(0xFF0D1217), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Border)) {
+        Column(Modifier.fillMaxSize().padding(if (wide) 20.dp else 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(master.name, Modifier.fillMaxWidth(), fontSize = if (wide) 20.sp else 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${timeText(position)} / ${timeText(total)}", color = Mint, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Slider(fraction, vm::seekToFraction, enabled = state.diagnostics.durationFrames > 0, modifier = Modifier.fillMaxWidth().height(32.dp))
+            Spacer(Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                StageControlButton(R.drawable.ic_ui_previous, tr("Pista anterior", "Previous track"), 64, canPrevious, Raised, TextMain, vm::skipToPreviousMasterTrack)
+                StageControlButton(if (state.diagnostics.toneEnabled) R.drawable.ic_ui_pause else R.drawable.ic_ui_play, tr("Reproducir o pausar", "Play or pause"), 88, !state.openingOutput, Mint, Bg, vm::playPause)
+                StageControlButton(R.drawable.ic_ui_stop, tr("Detener", "Stop"), 72, true, Red, Color.White, vm::stop)
+                StageControlButton(R.drawable.ic_ui_next, tr("Pista siguiente", "Next track"), 64, canNext, Raised, TextMain, vm::skipToNextMasterTrack)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(nextName?.let { tr("SIGUIENTE", "NEXT") + "  ·  $it" } ?: tr("FIN DE LA PLAYLIST", "END OF SETLIST"), color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun StageControlButton(iconRes: Int, label: String, size: Int, enabled: Boolean, color: Color, ink: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(size.dp).semantics { contentDescription = label; role = Role.Button },
+        color = if (enabled) color else Raised.copy(alpha = .35f),
+        border = if (color == Raised) BorderStroke(1.dp, if (enabled) Border else Border.copy(alpha = .3f)) else null,
+        shape = CircleShape,
+    ) {
+        Box(contentAlignment = Alignment.Center) { VectorIcon(iconRes, null, if (enabled) ink else TextMuted.copy(alpha = .35f), Modifier.size((size * .4f).dp)) }
+    }
+}
+
+@Composable
 private fun ConsoleReadout(label: String, value: String, color: Color) {
     Column(Modifier.width(92.dp)) {
-        Text(label, color = TextMuted, fontSize = 7.sp, fontWeight = FontWeight.Bold)
-        Text(value, color = color, fontFamily = FontFamily.Monospace, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(label, color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(value, color = color, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
     }
 }
 
@@ -535,26 +726,14 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
     var showEmptyStemDialog by remember { mutableStateOf(false) }
     val master = state.selectedMaster()
     if (master == null) {
-        ConsolePanel(Modifier.fillMaxSize()) { EmptyState("SIN PISTA MASTER", "Selecciona una pista de la playlist antes de editar stems.", "ABRIR PLAYLIST") { vm.setWorkspace(Workspace.PLAYLIST) } }
+        ConsolePanel(Modifier.fillMaxSize()) { EmptyState(
+            tr("SIN PISTA MASTER", "NO MASTER TRACK"),
+            tr("Selecciona una pista de la playlist antes de editar stems.", "Select a playlist track before editing stems."),
+            tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
+        ) { vm.setWorkspace(Workspace.PLAYLIST) } }
         return
     }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Surface(color = Panel, shape = RoundedCornerShape(8.dp)) {
-            Row(Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(master.name, Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1)
-                DawIconButton(
-                    icon = DawIcon.TIMELINE,
-                    label = tr("Timeline", "Timeline"),
-                    selected = state.trackWorkspace == TrackWorkspace.TIMELINE,
-                ) { vm.setTrackWorkspace(TrackWorkspace.TIMELINE) }
-                Spacer(Modifier.width(4.dp))
-                DawIconButton(
-                    icon = DawIcon.MIXER,
-                    label = tr("Consola de mezcla", "Mix console"),
-                    selected = state.trackWorkspace == TrackWorkspace.MIXER,
-                ) { vm.setTrackWorkspace(TrackWorkspace.MIXER) }
-            }
-        }
+    Box(Modifier.fillMaxSize()) {
         when (state.trackWorkspace) {
             TrackWorkspace.TIMELINE -> TimelineEditor(state, vm) { showStemOptions = true }
             TrackWorkspace.MIXER -> MixerConsole(state.tracks, vm)
@@ -593,11 +772,23 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
     val dpPerSecond = zoomLevels[zoomIndex]
     val density = LocalDensity.current
     val pxPerSecond = with(density) { dpPerSecond.dp.toPx() }
-    val labelWidth = 188.dp
+    val masterId = state.selectedMasterTrackId
+    val compactScreen = LocalConfiguration.current.screenWidthDp < 600
+    var toolsExpanded by rememberSaveable(masterId) { mutableStateOf(true) }
+    var labelPanelExpanded by rememberSaveable(masterId) { mutableStateOf(!compactScreen) }
+    val labelWidth = if (labelPanelExpanded) 188.dp else 42.dp
     val maxSeconds = maxOf(10.0, state.tracks.maxOf { it.startOffsetFrames.toDouble() / TIMELINE_SAMPLE_RATE + it.durationSeconds } + 1.0)
     var panSeconds by remember { mutableDoubleStateOf(0.0) }
     val grid = timelineGrid(dpPerSecond)
     val selected = state.tracks.firstOrNull { it.id == state.selectedTimelineTrackId }
+    val selectedProject = state.selectedProject()
+    val selectedMaster = state.selectedMaster()
+    val metronome = selectedMaster?.metronome(selectedProject?.defaultMetronome ?: MetronomeSettings()) ?: MetronomeSettings()
+    val markers = selectedMaster?.markers.orEmpty()
+    var markerDialogVisible by remember { mutableStateOf(false) }
+    var editingMarker by remember { mutableStateOf<TimelineMarker?>(null) }
+    var extractDialogVisible by remember { mutableStateOf(false) }
+    var toolsMenuExpanded by remember { mutableStateOf(false) }
     val canSplit = selected?.let { track ->
         val end = track.startOffsetFrames + (track.durationSeconds * TIMELINE_SAMPLE_RATE).roundToLong()
         state.timelineCursorFrames > track.startOffsetFrames && state.timelineCursorFrames < end
@@ -629,6 +820,8 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
             val candidates = buildList {
                 add(0L)
                 add(localCursorFrames)
+                add((proposed.toDouble() / metronome.beatDurationFrames()).roundToLong() * metronome.beatDurationFrames())
+                addAll(markers.map(TimelineMarker::positionFrames))
                 state.tracks.filterNot { it.id == trackId }.forEach { other ->
                     add(other.startOffsetFrames)
                     add(other.startOffsetFrames + (other.durationSeconds * TIMELINE_SAMPLE_RATE).roundToLong())
@@ -640,63 +833,136 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
 
         Surface(Modifier.fillMaxSize(), color = Panel, shape = RoundedCornerShape(8.dp)) {
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().height(48.dp).background(Raised).padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                if (toolsExpanded) Box(Modifier.fillMaxWidth().height(48.dp).background(Raised).padding(horizontal = 4.dp)) {
+                    Row(
+                        Modifier.fillMaxSize().padding(end = 40.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DawIconButton(DawIcon.ADD, tr("Agregar stem", "Add stem"), selected = true, onClick = addStem)
+                        Spacer(Modifier.width(4.dp))
+                        DawIconButton(DawIcon.UNDO, tr("Deshacer", "Undo"), enabled = state.canUndoTimeline, onClick = vm::undoTimelineEdit)
+                        Spacer(Modifier.width(4.dp))
+                        DawIconButton(DawIcon.REDO, tr("Rehacer", "Redo"), enabled = state.canRedoTimeline, onClick = vm::redoTimelineEdit)
+                        Spacer(Modifier.width(4.dp))
+                        DawIconButton(DawIcon.SPLIT, tr("Dividir stem en el cursor", "Split stem at playhead"), enabled = canSplit, onClick = vm::splitSelectedTrackAtCursor)
+                        Spacer(Modifier.weight(1f))
+                        Box {
+                            DawIconButton(DawIcon.MORE, tr("Más herramientas", "More tools"), onClick = { toolsMenuExpanded = true })
+                            DropdownMenu(expanded = toolsMenuExpanded, onDismissRequest = { toolsMenuExpanded = false }) {
+                                TimelineMenuItem(DawIcon.EXTRACT, tr("Enviar a pista independiente", "Send to independent track"), selected != null) {
+                                    toolsMenuExpanded = false; extractDialogVisible = true
+                                }
+                                TimelineMenuItem(DawIcon.MARKER, tr("Agregar marca", "Add marker"), true) {
+                                    toolsMenuExpanded = false; editingMarker = null; markerDialogVisible = true
+                                }
+                                TimelineSwitchMenuItem(
+                                    DawIcon.METRONOME,
+                                    tr("Grilla de tempo", "Tempo grid"),
+                                    selectedMaster?.tempoGridVisible == true,
+                                    enabled = selectedMaster != null,
+                                ) { vm.setTempoGridVisible(it) }
+                                TimelineMenuItem(
+                                    DawIcon.METRONOME,
+                                    if (selected?.isClickReference == true) {
+                                        tr("Quitar referencia de click", "Remove click reference")
+                                    } else {
+                                        tr("Usar stem como referencia de click", "Use stem as click reference")
+                                    },
+                                    selected != null,
+                                    active = selected?.isClickReference == true,
+                                ) {
+                                    toolsMenuExpanded = false
+                                    vm.toggleSelectedTrackAsClickReference()
+                                }
+                                TimelineMenuItem(DawIcon.ZOOM_OUT, tr("Alejar", "Zoom out"), zoomIndex > 0) {
+                                    toolsMenuExpanded = false; zoomIndex = (zoomIndex - 1).coerceAtLeast(0)
+                                }
+                                TimelineMenuItem(DawIcon.ZOOM_IN, tr("Acercar", "Zoom in"), zoomIndex < zoomLevels.lastIndex) {
+                                    toolsMenuExpanded = false; zoomIndex = (zoomIndex + 1).coerceAtMost(zoomLevels.lastIndex)
+                                }
+                                TimelineMenuItem(DawIcon.DELETE, tr("Quitar stem", "Remove stem"), selected != null, danger = true) {
+                                    toolsMenuExpanded = false; selected?.let { vm.removeTrack(it.id) }
+                                }
+                            }
+                        }
+                    }
+                    CompactIconButton(
+                        R.drawable.ic_ui_arrow_up,
+                        tr("Minimizar herramientas", "Collapse tools"),
+                        Modifier.align(Alignment.CenterEnd).background(Raised),
+                    ) { toolsExpanded = false }
+                } else Surface(
+                    onClick = { toolsExpanded = true },
+                    modifier = Modifier.fillMaxWidth().height(30.dp),
+                    color = Color(0xFF191B1D),
                 ) {
-                    DawIconButton(DawIcon.ADD, tr("Agregar stem", "Add stem"), selected = true, onClick = addStem)
-                    if (editorWidth >= 720.dp) {
-                        Spacer(Modifier.width(12.dp))
-                        Text(selected?.name ?: tr("Selecciona un clip", "Select a clip"), Modifier.weight(1f),
-                            color = if (selected == null) TextMuted else TextMain, fontSize = 11.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    } else Spacer(Modifier.weight(1f))
-                    DawIconButton(DawIcon.UNDO, tr("Deshacer", "Undo"), enabled = state.canUndoTimeline, onClick = vm::undoTimelineEdit)
-                    DawIconButton(DawIcon.REDO, tr("Rehacer", "Redo"), enabled = state.canRedoTimeline, onClick = vm::redoTimelineEdit)
-                    DawIconButton(DawIcon.SPLIT, tr("Dividir stem en el cursor", "Split stem at playhead"), enabled = canSplit, onClick = vm::splitSelectedTrackAtCursor)
-                    DawIconButton(
-                        DawIcon.DELETE,
-                        tr("Quitar stem seleccionado", "Remove selected stem"),
-                        enabled = selected != null,
-                        danger = true,
-                        onClick = { selected?.let { vm.removeTrack(it.id) } },
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    DawIconButton(DawIcon.ZOOM_OUT, tr("Alejar timeline", "Zoom timeline out"), enabled = zoomIndex > 0) {
-                        zoomIndex = (zoomIndex - 1).coerceAtLeast(0)
-                    }
-                    if (editorWidth >= 600.dp) {
-                        Text(grid.scaleLabel, Modifier.width(58.dp), color = TextMuted, fontFamily = FontFamily.Monospace,
-                            fontSize = 9.sp, textAlign = TextAlign.Center)
-                    }
-                    DawIconButton(DawIcon.ZOOM_IN, tr("Acercar timeline", "Zoom timeline in"), enabled = zoomIndex < zoomLevels.lastIndex) {
-                        zoomIndex = (zoomIndex + 1).coerceAtMost(zoomLevels.lastIndex)
+                    Row(Modifier.fillMaxSize().padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        VectorIcon(R.drawable.ic_ui_timeline, null, TextMuted, Modifier.size(16.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text(tr("HERRAMIENTAS", "TOOLS"), color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Text(selected?.name.orEmpty(), Modifier.weight(1f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.width(7.dp))
+                        VectorIcon(R.drawable.ic_ui_arrow_down, tr("Restaurar herramientas", "Expand tools"), TextMuted, Modifier.size(18.dp))
                     }
                 }
                 Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                     Column(Modifier.fillMaxSize()) {
-                        Row(Modifier.height(52.dp).fillMaxWidth()) {
+                        Row(Modifier.height(76.dp).fillMaxWidth()) {
                             Box(Modifier.width(labelWidth).fillMaxHeight().background(Color(0xFF111315)).padding(horizontal = 10.dp),
                                 contentAlignment = Alignment.CenterStart) {
-                                Column {
-                                    Text(tr("CURSOR", "PLAYHEAD"), color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                    Text(timelineTimecode(localCursorFrames), color = Amber, fontFamily = FontFamily.Monospace,
-                                        fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                if (labelPanelExpanded) {
+                                    Column {
+                                        Text(tr("CURSOR", "PLAYHEAD"), color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(timelineTimecode(localCursorFrames), color = Amber, fontFamily = FontFamily.Monospace,
+                                            fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    CompactIconButton(
+                                        R.drawable.ic_ui_collapse_left,
+                                        tr("Minimizar panel de stems", "Collapse stem panel"),
+                                        Modifier.align(Alignment.CenterEnd),
+                                    ) { labelPanelExpanded = false }
+                                } else {
+                                    CompactIconButton(
+                                        R.drawable.ic_ui_expand_right,
+                                        tr("Restaurar panel de stems", "Expand stem panel"),
+                                        Modifier.align(Alignment.Center),
+                                    ) { labelPanelExpanded = true }
                                 }
                             }
-                            TimelineRuler(
-                                panSeconds, visibleSeconds, pxPerSecond, grid,
-                                Modifier.weight(1f).fillMaxHeight().scrollable(horizontalPan, Orientation.Horizontal),
-                            ) { seconds ->
-                                val frame = (seconds * TIMELINE_SAMPLE_RATE).roundToLong().coerceAtLeast(0)
-                                localCursorFrames = frame
-                                vm.setTimelineCursor(frame)
+                            Column(Modifier.weight(1f).fillMaxHeight().scrollable(horizontalPan, Orientation.Horizontal)) {
+                                MarkerRuler(
+                                    markers = markers,
+                                    panSeconds = panSeconds,
+                                    visibleSeconds = visibleSeconds,
+                                    pxPerSecond = pxPerSecond,
+                                    maxFrames = (maxSeconds * TIMELINE_SAMPLE_RATE).roundToLong(),
+                                    renderingIds = state.renderingVoiceCueIds,
+                                    failedIds = state.failedVoiceCueIds,
+                                    edit = { marker ->
+                                        localCursorFrames = marker.positionFrames
+                                        vm.setTimelineCursor(marker.positionFrames)
+                                        editingMarker = marker
+                                        markerDialogVisible = true
+                                    },
+                                    move = vm::setTimelineMarkerPosition,
+                                    modifier = Modifier.fillMaxWidth().height(34.dp),
+                                )
+                                TimelineRuler(
+                                    panSeconds, visibleSeconds, pxPerSecond, grid, metronome,
+                                    selectedMaster?.tempoGridVisible == true,
+                                    Modifier.fillMaxWidth().weight(1f),
+                                ) { seconds ->
+                                    val frame = (seconds * TIMELINE_SAMPLE_RATE).roundToLong().coerceAtLeast(0)
+                                    localCursorFrames = frame
+                                    vm.setTimelineCursor(frame)
+                                }
                             }
                         }
                         LazyColumn(Modifier.weight(1f)) {
                             itemsIndexed(state.tracks, key = { _, it -> it.id }) { index, track ->
                                 Row(Modifier.fillMaxWidth().height(68.dp)) {
-                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth) {
+                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded) {
                                         vm.selectTimelineTrack(track.id)
                                     }
                                     TimelineLaneViewport(
@@ -707,6 +973,8 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
                                         visibleSeconds = visibleSeconds,
                                         pxPerSecond = pxPerSecond,
                                         grid = grid,
+                                        metronome = metronome,
+                                        showTempoGrid = selectedMaster?.tempoGridVisible == true,
                                         horizontalPan = horizontalPan,
                                         snapOffset = { snapOffset(track.id, it) },
                                         select = { vm.selectTimelineTrack(track.id) },
@@ -722,6 +990,13 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
                     val cursorSeconds = localCursorFrames.toDouble() / TIMELINE_SAMPLE_RATE
                     val cursorX = labelWidthPx + ((cursorSeconds - panSeconds) * pxPerSecond).toFloat()
                     Canvas(Modifier.matchParentSize()) {
+                        markers.forEach { marker ->
+                            val markerX = labelWidthPx + ((marker.positionFrames.toDouble() / TIMELINE_SAMPLE_RATE - panSeconds) * pxPerSecond).toFloat()
+                            if (markerX in labelWidthPx..size.width) {
+                                drawLine(Blue.copy(alpha = .72f), androidx.compose.ui.geometry.Offset(markerX, 34.dp.toPx()),
+                                    androidx.compose.ui.geometry.Offset(markerX, size.height), 1.dp.toPx())
+                            }
+                        }
                         if (cursorX in labelWidthPx..size.width) {
                             drawLine(Amber, androidx.compose.ui.geometry.Offset(cursorX, 0f),
                                 androidx.compose.ui.geometry.Offset(cursorX, size.height), 2.dp.toPx())
@@ -730,7 +1005,7 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
                     if (cursorX in labelWidthPx..with(density) { editorWidth.toPx() }) {
                         Box(
                             Modifier.offset { IntOffset((cursorX - with(density) { 20.dp.toPx() }).roundToInt(), 0) }
-                                .size(width = 40.dp, height = 52.dp)
+                                .size(width = 40.dp, height = 76.dp)
                                 .pointerInput(pxPerSecond, maxSeconds) {
                                     detectDragGestures { change, amount ->
                                         change.consume()
@@ -759,6 +1034,27 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
             }
         }
     }
+    if (extractDialogVisible) {
+        NameDialog(
+            title = tr("Enviar a pista independiente", "Send to independent track"),
+            initial = selected?.name?.substringBeforeLast('.')?.let { tr("$it separado", "$it extract") }.orEmpty(),
+            dismiss = { extractDialogVisible = false },
+            confirm = { vm.extractSelectedTrackToNewMaster(it); extractDialogVisible = false },
+        )
+    }
+    if (markerDialogVisible) {
+        TimelineMarkerDialog(
+            marker = editingMarker,
+            dismiss = { markerDialogVisible = false },
+            save = { label, kind, voice, lead ->
+                val marker = editingMarker
+                if (marker == null) vm.createTimelineMarker(label, kind, voice, lead)
+                else vm.updateTimelineMarker(marker.id, label, kind, voice, lead)
+                markerDialogVisible = false
+            },
+            delete = editingMarker?.let { marker -> { vm.deleteTimelineMarker(marker.id); markerDialogVisible = false } },
+        )
+    }
 }
 
 private data class TimelineGrid(val majorSeconds: Double, val minorSeconds: Double, val scaleLabel: String)
@@ -777,6 +1073,8 @@ private fun TimelineRuler(
     visibleSeconds: Double,
     pxPerSecond: Float,
     grid: TimelineGrid,
+    metronome: MetronomeSettings,
+    showTempoGrid: Boolean,
     modifier: Modifier,
     seek: (Double) -> Unit,
 ) {
@@ -794,9 +1092,14 @@ private fun TimelineRuler(
                 val seconds = tick * grid.minorSeconds
                 val x = ((seconds - panSeconds) * pxPerSecond).toFloat()
                 val major = tick % majorEvery == 0L
-                drawLine(if (major) Silver else Border, androidx.compose.ui.geometry.Offset(x, if (major) 18.dp.toPx() else 27.dp.toPx()),
-                    androidx.compose.ui.geometry.Offset(x, size.height), if (major) 1.5.dp.toPx() else 1.dp.toPx())
+                drawLine(
+                    if (major) Silver.copy(alpha = .38f) else Border.copy(alpha = .22f),
+                    androidx.compose.ui.geometry.Offset(x, if (major) 18.dp.toPx() else 27.dp.toPx()),
+                    androidx.compose.ui.geometry.Offset(x, size.height),
+                    if (major) 1.dp.toPx() else .75.dp.toPx(),
+                )
             }
+            if (showTempoGrid) drawBeatLines(panSeconds, visibleSeconds, pxPerSecond, metronome, ruler = true)
         }
         var labelTime = floor(panSeconds / grid.majorSeconds) * grid.majorSeconds
         while (labelTime <= panSeconds + visibleSeconds + grid.majorSeconds) {
@@ -809,23 +1112,126 @@ private fun TimelineRuler(
     }
 }
 
+@Composable
+private fun MarkerRuler(
+    markers: List<TimelineMarker>,
+    panSeconds: Double,
+    visibleSeconds: Double,
+    pxPerSecond: Float,
+    maxFrames: Long,
+    renderingIds: Set<String>,
+    failedIds: Set<String>,
+    edit: (TimelineMarker) -> Unit,
+    move: (String, Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.background(Color(0xFF0D1012)).clipToBounds()) {
+        Text(tr("MARCAS", "MARKERS"), Modifier.align(Alignment.CenterEnd).padding(end = 8.dp), color = TextMuted.copy(alpha = .45f),
+            fontSize = 7.sp, fontWeight = FontWeight.Bold)
+        markers.filter { it.positionFrames.toDouble() / TIMELINE_SAMPLE_RATE in (panSeconds - 1.0)..(panSeconds + visibleSeconds) }
+            .forEach { marker ->
+                var localFrame by remember(marker.id, marker.positionFrames) { mutableLongStateOf(marker.positionFrames) }
+                val x = ((localFrame.toDouble() / TIMELINE_SAMPLE_RATE - panSeconds) * pxPerSecond).toFloat()
+                Surface(
+                    onClick = { edit(marker.copy(positionFrames = localFrame)) },
+                    modifier = Modifier.offset { IntOffset(x.roundToInt(), 3) }.height(28.dp).widthIn(max = 138.dp)
+                        .pointerInput(marker.id, pxPerSecond, maxFrames) {
+                            detectDragGestures(
+                                onDragEnd = { move(marker.id, localFrame) },
+                                onDragCancel = { localFrame = marker.positionFrames },
+                            ) { change, amount ->
+                                change.consume()
+                                val beatFrames = TIMELINE_SAMPLE_RATE / 1_000L
+                                val raw = (localFrame + amount.x / pxPerSecond * TIMELINE_SAMPLE_RATE).roundToLong().coerceIn(0, maxFrames)
+                                localFrame = ((raw + beatFrames / 2) / beatFrames) * beatFrames
+                            }
+                        },
+                    color = Blue,
+                    shape = RoundedCornerShape(topEnd = 5.dp, bottomEnd = 5.dp),
+                ) {
+                    Row(Modifier.padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                        VectorIcon(
+                            if (marker.voiceCueEnabled) R.drawable.ic_ui_voice else R.drawable.ic_ui_marker,
+                            null,
+                            when {
+                                marker.id in failedIds -> Red
+                                marker.id in renderingIds -> Amber
+                                else -> Color.White
+                            },
+                            Modifier.size(15.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(marker.label, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+    }
+}
+
 private fun rulerLabel(seconds: Double, majorSeconds: Double): String = when {
     majorSeconds >= 1.0 -> "${seconds.roundToInt()}s"
     majorSeconds >= .5 -> "%.1fs".format(seconds)
     else -> "%.2fs".format(seconds)
 }
 
+private fun DrawScope.drawBeatLines(
+    panSeconds: Double,
+    visibleSeconds: Double,
+    pxPerSecond: Float,
+    metronome: MetronomeSettings,
+    ruler: Boolean,
+) {
+    val beatSeconds = metronome.beatDurationSeconds()
+    val showEveryBeat = beatSeconds * pxPerSecond >= 8f
+    val step = if (showEveryBeat) beatSeconds else metronome.barDurationSeconds()
+    val first = floor(panSeconds / step).toLong()
+    val last = ((panSeconds + visibleSeconds) / step).toLong() + 1
+    for (tick in first..last) {
+        val seconds = tick * step
+        val x = ((seconds - panSeconds) * pxPerSecond).toFloat()
+        val beatIndex = if (showEveryBeat) tick else tick * metronome.numerator
+        val downbeat = beatIndex % metronome.numerator == 0L
+        val color = if (downbeat) {
+            Amber.copy(alpha = if (ruler) .96f else .48f)
+        } else {
+            Silver.copy(alpha = if (ruler) .82f else .32f)
+        }
+        val startY = if (ruler) size.height * if (downbeat) .34f else .52f else 0f
+        drawLine(
+            color,
+            androidx.compose.ui.geometry.Offset(x, startY),
+            androidx.compose.ui.geometry.Offset(x, size.height),
+            if (downbeat) 1.75.dp.toPx() else 1.dp.toPx(),
+        )
+    }
+}
+
 @Composable
-private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, select: () -> Unit) {
+private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, select: () -> Unit) {
     Surface(onClick = select, modifier = Modifier.width(width).fillMaxHeight(),
         color = if (selected) Raised else if (index % 2 == 0) Panel else Color(0xFF191B1D)) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(4.dp).height(44.dp).background(Color(track.colorArgb), RoundedCornerShape(2.dp)))
-            Spacer(Modifier.width(9.dp))
-            Column(Modifier.weight(1f)) {
-                Text(track.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${(index + 1).toString().padStart(2, '0')}  ·  IN ${timelineTimecode(track.startOffsetFrames)}",
-                    color = if (selected) Color(track.colorArgb) else TextMuted, fontFamily = FontFamily.Monospace, fontSize = 9.sp)
+        Row(Modifier.fillMaxSize().padding(horizontal = if (compact) 5.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (compact) {
+                Box(Modifier.width(4.dp).height(44.dp).background(Color(track.colorArgb), RoundedCornerShape(2.dp)))
+                Spacer(Modifier.width(5.dp))
+                Text(if (track.isClickReference) "REF" else (index + 1).toString().padStart(2, '0'), color = if (track.isClickReference) Amber else if (selected) Color(track.colorArgb) else TextMuted,
+                    fontFamily = FontFamily.Monospace, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Box(Modifier.width(4.dp).height(44.dp).background(Color(track.colorArgb), RoundedCornerShape(2.dp)))
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(track.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        (if (track.isClickReference) "REF" else (index + 1).toString().padStart(2, '0')) +
+                            "  ·  ${if (track.isClickReference) "" else "IN "}${timelineTimecode(track.startOffsetFrames)}",
+                        color = if (track.isClickReference) Amber else if (selected) Color(track.colorArgb) else TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -840,6 +1246,8 @@ private fun TimelineLaneViewport(
     visibleSeconds: Double,
     pxPerSecond: Float,
     grid: TimelineGrid,
+    metronome: MetronomeSettings,
+    showTempoGrid: Boolean,
     horizontalPan: androidx.compose.foundation.gestures.ScrollableState,
     snapOffset: (Long) -> Long,
     select: () -> Unit,
@@ -860,9 +1268,10 @@ private fun TimelineLaneViewport(
             val majorEvery = (grid.majorSeconds / grid.minorSeconds).roundToInt().coerceAtLeast(1)
             for (tick in firstTick..lastTick) {
                 val x = ((tick * grid.minorSeconds - panSeconds) * pxPerSecond).toFloat()
-                drawLine(if (tick % majorEvery == 0L) Border.copy(alpha = .7f) else Border.copy(alpha = .25f),
+                drawLine(if (tick % majorEvery == 0L) Border.copy(alpha = .38f) else Border.copy(alpha = .14f),
                     androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), 1f)
             }
+            if (showTempoGrid) drawBeatLines(panSeconds, visibleSeconds, pxPerSecond, metronome, ruler = false)
         }
         if (visibleEnd > visibleStart && track.durationSeconds > 0) {
             val startPx = ((visibleStart - panSeconds) * pxPerSecond).toFloat()
@@ -905,7 +1314,9 @@ private fun TimelineLaneViewport(
                         }
                     }
                 } else {
-                    Text(tr("Analizando onda…", "Analyzing waveform…"), Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
+                    Text(
+                        if (track.hasAudioSource) tr("Onda no disponible", "Waveform unavailable") else tr("Región vacía", "Empty region"),
+                        Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
                         color = Color.White.copy(alpha = .72f), fontSize = 9.sp, maxLines = 1)
                 }
             }
@@ -950,7 +1361,13 @@ private fun ChannelStrip(index: Int, track: MixerTrackUi, gain: (Float) -> Unit,
             Box(Modifier.fillMaxWidth().height(3.dp).background(stripColor))
             Row(Modifier.fillMaxWidth().height(42.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(track.name, Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text((index + 1).toString().padStart(2, '0'), color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 8.sp)
+                Text(
+                    if (track.isClickReference) "REF" else (index + 1).toString().padStart(2, '0'),
+                    color = if (track.isClickReference) Amber else TextMuted,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 8.sp,
+                    fontWeight = if (track.isClickReference) FontWeight.Bold else FontWeight.Normal,
+                )
             }
             HorizontalDivider(color = Border)
             Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1073,20 +1490,26 @@ private fun KnobControl(
 
 @Composable
 private fun MasterScreen(state: MainUiState, vm: MainViewModel) {
-    var section by remember { mutableStateOf(MasterSection.PROJECT) }
+    var section by rememberSaveable { mutableStateOf(MasterSection.PROJECT) }
     val project = state.selectedProject(); val master = state.selectedMaster()
     if (project == null) {
-        ConsolePanel(Modifier.fillMaxSize()) { EmptyState("SIN PROYECTO", "El master pertenece a un proyecto.", "IR A PROYECTOS") { vm.setWorkspace(Workspace.PROJECTS) } }; return
+        ConsolePanel(Modifier.fillMaxSize()) { EmptyState(
+            tr("SIN PROYECTO", "NO PROJECT"),
+            tr("El master pertenece a un proyecto.", "Master output belongs to a project."),
+            tr("IR A PROYECTOS", "GO TO PROJECTS"),
+        ) { vm.setWorkspace(Workspace.PROJECTS) } }; return
     }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(38.dp).background(Panel, RoundedCornerShape(8.dp)).horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(52.dp).background(Panel, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(start = 4.dp)) {
+                Text(section.title(), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                val scopeName = if (section == MasterSection.PROJECT) project.name else master?.name ?: tr("Sin canción", "No song")
+                Text(scopeName, color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             MasterSection.entries.forEach { item ->
-                Surface(onClick = { section = item }, color = if (section == item) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(7.dp)) {
-                    Row(Modifier.height(30.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        VectorIcon(item.iconRes, null, if (section == item) Mint else TextMuted, Modifier.size(20.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(item.label, color = if (section == item) TextMain else TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    }
+                val itemTitle = item.title()
+                Surface(onClick = { section = item }, modifier = Modifier.size(44.dp).semantics { contentDescription = itemTitle; role = Role.Button }, color = if (section == item) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(9.dp)) {
+                    Box(contentAlignment = Alignment.Center) { VectorIcon(item.iconRes, null, if (section == item) Mint else TextMuted, Modifier.size(22.dp)) }
                 }
                 Spacer(Modifier.width(4.dp))
             }
@@ -1096,7 +1519,7 @@ private fun MasterScreen(state: MainUiState, vm: MainViewModel) {
             when (section) {
                 MasterSection.PROJECT -> ProjectMasterPanel(project, vm)
                 MasterSection.TRACK -> MasterTrackPanel(master, vm)
-                MasterSection.METRONOME -> MetronomePanel(project, master, vm)
+                MasterSection.METRONOME -> MasterMetronomePanel(project, master, vm)
                 MasterSection.ROUTING -> RoutingPanel(state, vm)
             }
         }
@@ -1111,17 +1534,59 @@ private enum class MasterSection(val label: String, val iconRes: Int) {
 }
 
 @Composable
+private fun MasterSection.title() = when (this) {
+    MasterSection.PROJECT -> tr("Salida del show", "Show output")
+    MasterSection.TRACK -> tr("Salida de canción", "Song output")
+    MasterSection.METRONOME -> tr("Click y tempo", "Click and tempo")
+    MasterSection.ROUTING -> tr("Ruteo de salida", "Output routing")
+}
+
+@Composable
 private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth < 600.dp) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ProjectOutputModule(project, vm, Modifier.fillMaxWidth().height(260.dp))
-                DefaultMetronomeModule(project, vm, Modifier.fillMaxWidth().height(430.dp), compact = true)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ProjectOutputModule(project, vm, Modifier.fillMaxWidth().height(300.dp))
+                ConsolePanel(Modifier.fillMaxWidth().height(180.dp), padding = 16.dp) {
+                    Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
+                    SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
+                    SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
+                }
             }
-        } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ProjectOutputModule(project, vm, Modifier.width(330.dp).fillMaxHeight())
-            DefaultMetronomeModule(project, vm, Modifier.weight(1f).fillMaxHeight(), compact = false)
+        } else Row(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ProjectOutputModule(project, vm, Modifier.width(400.dp).fillMaxHeight())
+            ConsolePanel(Modifier.weight(1f).fillMaxHeight(), padding = 20.dp) {
+                Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
+                Spacer(Modifier.height(12.dp))
+                SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
+                SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
+                SummaryLine(tr("Plantilla de click", "Click template"), "${project.defaultMetronome.bpm.roundToInt()} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}")
+            }
         }
+    }
+}
+
+@Composable
+private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel) {
+    var projectTemplate by rememberSaveable(master?.id) { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().padding(top = 4.dp)) {
+        Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(9.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            MasterScopeButton(tr("Plantilla del proyecto", "Project template"), projectTemplate, Modifier.weight(1f)) { projectTemplate = true }
+            MasterScopeButton(tr("Canción seleccionada", "Selected song"), !projectTemplate, Modifier.weight(1f)) { projectTemplate = false }
+        }
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (projectTemplate) BoxWithConstraints {
+                DefaultMetronomeModule(project, vm, Modifier.fillMaxSize(), compact = maxWidth < 600.dp)
+            } else MetronomePanel(project, master, vm)
+        }
+    }
+}
+
+@Composable
+private fun MasterScopeButton(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Surface(onClick = onClick, modifier = modifier.fillMaxHeight(), color = if (selected) Blue else Color.Transparent, shape = RoundedCornerShape(7.dp)) {
+        Box(contentAlignment = Alignment.Center) { Text(label, color = if (selected) Color.White else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
     }
 }
 
@@ -1129,14 +1594,14 @@ private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
 private fun ProjectOutputModule(project: Project, vm: MainViewModel, modifier: Modifier) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
         Column(Modifier.padding(14.dp)) {
-            Text("PROJECT OUTPUT", color = Mint, fontSize = 8.sp, fontWeight = FontWeight.Black)
+            Text(tr("SALIDA DEL SHOW", "SHOW OUTPUT"), color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Black)
             Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 KnobControl("VOLUME", project.masterGainDb, -60f..6f, vm::setProjectGain, Mint, formatDb(project.masterGainDb), 92.dp)
                 KnobControl("PAN", project.masterPan, -1f..1f, vm::setProjectPan, Amber, panLabel(project.masterPan), 76.dp)
             }
             Spacer(Modifier.weight(1f))
-            Text("Afecta toda la playlist", color = TextMuted, fontSize = 8.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Text(tr("Afecta toda la playlist", "Controls the entire setlist"), color = TextMuted, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -1145,32 +1610,36 @@ private fun ProjectOutputModule(project: Project, vm: MainViewModel, modifier: M
 private fun DefaultMetronomeModule(project: Project, vm: MainViewModel, modifier: Modifier, compact: Boolean) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
         if (compact) Column(Modifier.fillMaxSize().padding(14.dp)) {
-            Text("METRONOME DEFAULT · NO GLOBAL", color = Amber, fontSize = 8.sp, fontWeight = FontWeight.Black)
+            Text(tr("PLANTILLA DE CLICK · NO GLOBAL", "CLICK TEMPLATE · NOT GLOBAL"), color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Black)
             Text("${project.defaultMetronome.bpm.roundToInt()} BPM  ·  ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}", color = Amber, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            MetronomeControls(project.defaultMetronome, true) { transform -> vm.updateDefaultMetronome(transform) }
+            MetronomeControls(project.defaultMetronome, true, usingReferenceStem = false) { transform -> vm.updateDefaultMetronome(transform) }
         } else Row(Modifier.fillMaxSize().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.width(180.dp)) {
-                Text("METRONOME DEFAULT", color = Amber, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                Text("Plantilla", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("No reproduce globalmente. Cada pista hereda estos valores.", color = TextMuted, fontSize = 8.sp)
+                Text(tr("PLANTILLA DE CLICK", "CLICK TEMPLATE"), color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text(tr("Plantilla", "Template"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(tr("No reproduce globalmente. Cada pista hereda estos valores.", "It never plays globally. Each song inherits these values."), color = TextMuted, fontSize = 10.sp)
                 Spacer(Modifier.weight(1f))
                 Text("${project.defaultMetronome.bpm.roundToInt()} BPM  ·  ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}", color = Amber, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { MetronomeControls(project.defaultMetronome, true) { transform -> vm.updateDefaultMetronome(transform) } }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) { MetronomeControls(project.defaultMetronome, true, usingReferenceStem = false) { transform -> vm.updateDefaultMetronome(transform) } }
         }
     }
 }
 
 @Composable
 private fun MasterTrackPanel(master: MasterTrack?, vm: MainViewModel) {
-    if (master == null) { EmptyState("SIN PISTA SELECCIONADA", "Selecciona una pista de la playlist.", "ABRIR PLAYLIST") { vm.setWorkspace(Workspace.PLAYLIST) }; return }
+    if (master == null) { EmptyState(
+        tr("SIN PISTA SELECCIONADA", "NO TRACK SELECTED"),
+        tr("Selecciona una pista de la playlist.", "Select a track from the playlist."),
+        tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
+    ) { vm.setWorkspace(Workspace.PLAYLIST) }; return }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 600.dp
         val output: @Composable (Modifier) -> Unit = { modifier ->
             Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("MASTER TRACK · ${master.name}", color = Blue, fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                    Text(tr("SALIDA DE CANCIÓN", "SONG OUTPUT") + " · ${master.name}", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
                     Spacer(Modifier.weight(1f))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         KnobControl("VOLUME", master.gainDb, -60f..6f, vm::setMasterGain, Mint, formatDb(master.gainDb), 92.dp)
@@ -1183,9 +1652,9 @@ private fun MasterTrackPanel(master: MasterTrack?, vm: MainViewModel) {
         val summary: @Composable (Modifier) -> Unit = { modifier ->
             Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("SIGNAL SUMMARY", color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Black)
-                    SummaryLine("Stems", master.tracks.size.toString()); SummaryLine("Duracion", timeText(master.durationSeconds()))
-                    SummaryLine("Ultima entrada", timeText(master.tracks.maxOfOrNull { it.startOffsetFrames.toDouble() / TIMELINE_SAMPLE_RATE } ?: 0.0))
+                    Text(tr("RESUMEN DE SEÑAL", "SIGNAL SUMMARY"), color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    SummaryLine("Stems", master.tracks.size.toString()); SummaryLine(tr("Duración", "Duration"), timeText(master.durationSeconds()))
+                    SummaryLine(tr("Última entrada", "Last entry"), timeText(master.tracks.maxOfOrNull { it.startOffsetFrames.toDouble() / TIMELINE_SAMPLE_RATE } ?: 0.0))
                     Spacer(Modifier.weight(1f))
                     DawIconButton(
                         DawIcon.MIXER,
@@ -1206,20 +1675,36 @@ private fun MasterTrackPanel(master: MasterTrack?, vm: MainViewModel) {
 
 @Composable
 private fun MetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel) {
-    if (master == null) { EmptyState("SIN PISTA SELECCIONADA", "El metronomo siempre pertenece a una pista master.", "ABRIR PLAYLIST") { vm.setWorkspace(Workspace.PLAYLIST) }; return }
+    if (master == null) { EmptyState(
+        tr("SIN PISTA SELECCIONADA", "NO TRACK SELECTED"),
+        tr("El metrónomo siempre pertenece a una pista master.", "The metronome always belongs to a master track."),
+        tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
+    ) { vm.setWorkspace(Workspace.PLAYLIST) }; return }
     val inherited = master.metronomeOverride == null
     val value = master.metronome(project.defaultMetronome)
+    val clickReference = master.clickReferenceTrack()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxWidth < 600.dp
         val inheritance: @Composable (Modifier) -> Unit = { modifier ->
             Surface(modifier, color = if (inherited) Blue.copy(alpha = .10f) else Panel, shape = RoundedCornerShape(8.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("${master.name} · CLICK", color = Amber, fontSize = 8.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                    Text(if (inherited) "INHERITED" else "CUSTOM", fontFamily = FontFamily.Monospace, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text(if (inherited) "Usa la plantilla del proyecto" else "Ajuste exclusivo de esta pista", color = TextMuted, fontSize = 8.sp)
+                    Text("${master.name} · CLICK", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
+                    Text(if (inherited) tr("HEREDADO", "INHERITED") else tr("PERSONALIZADO", "CUSTOM"), fontFamily = FontFamily.Monospace, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(if (inherited) tr("Usa la plantilla del proyecto", "Uses the project template") else tr("Ajuste exclusivo de esta canción", "Custom settings for this song"), color = TextMuted, fontSize = 10.sp)
+                    if (clickReference != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            tr("CLICK STEM", "STEM CLICK") + " · ${clickReference.name}",
+                            color = Amber,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Spacer(Modifier.weight(1f))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("USE DEFAULT", Modifier.weight(1f), color = TextMuted, fontSize = 8.sp)
+                        Text(tr("USAR PLANTILLA", "USE TEMPLATE"), Modifier.weight(1f), color = TextMuted, fontSize = 10.sp)
                         Switch(checked = inherited, onCheckedChange = vm::setMasterUsesDefault)
                     }
                 }
@@ -1227,7 +1712,16 @@ private fun MetronomePanel(project: Project, master: MasterTrack?, vm: MainViewM
         }
         val controls: @Composable (Modifier) -> Unit = { modifier ->
             Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
-                Column(Modifier.padding(14.dp).verticalScroll(rememberScrollState())) { MetronomeControls(value, !inherited) { transform -> vm.updateMasterMetronome(transform) } }
+                Column(Modifier.padding(14.dp).verticalScroll(rememberScrollState())) {
+                    if (clickReference != null) {
+                        SettingsNotice(tr(
+                            "El stem de referencia reemplaza el click nativo y sale sólo por MONITOR. BPM y compás siguen controlando la grilla y las marcas.",
+                            "The reference stem replaces the native click and routes to MONITOR only. BPM and meter still control the grid and markers.",
+                        ))
+                        Spacer(Modifier.height(10.dp))
+                    }
+                    MetronomeControls(value, !inherited, usingReferenceStem = clickReference != null) { transform -> vm.updateMasterMetronome(transform) }
+                }
             }
         }
         if (compact) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1239,21 +1733,34 @@ private fun MetronomePanel(project: Project, master: MasterTrack?, vm: MainViewM
 }
 
 @Composable
-private fun MetronomeControls(value: MetronomeSettings, enabled: Boolean, update: ((MetronomeSettings) -> MetronomeSettings) -> Unit) {
+private fun MetronomeControls(
+    value: MetronomeSettings,
+    enabled: Boolean,
+    usingReferenceStem: Boolean,
+    update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Text("CLICK ACTIVO", fontSize = 10.sp, fontWeight = FontWeight.Bold); Text("Salida monitor protegida", color = TextMuted, fontSize = 9.sp) }
-        Switch(value.enabled, { update { old -> old.copy(enabled = it) } }, enabled = enabled)
+        Column(Modifier.weight(1f)) {
+            Text(tr("CLICK NATIVO", "NATIVE CLICK"), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (usingReferenceStem) tr("Suspendido por el stem de referencia", "Suspended by the reference stem")
+                else tr("Salida monitor protegida", "Protected monitor output"),
+                color = if (usingReferenceStem) Amber else TextMuted,
+                fontSize = 9.sp,
+            )
+        }
+        Switch(value.enabled && !usingReferenceStem, { update { old -> old.copy(enabled = it) } }, enabled = enabled && !usingReferenceStem)
     }
     Spacer(Modifier.height(8.dp)); LabelValue("TEMPO", "${value.bpm.roundToInt()} BPM", Mint)
     Slider(value.bpm.toFloat(), { bpm -> update { it.copy(bpm = bpm.toDouble()) } }, valueRange = 40f..240f, enabled = enabled)
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        NumberStepper("PULSOS", value.numerator, enabled, Modifier.weight(1f)) { n -> update { it.copy(numerator = n) } }
-        NumberStepper("FIGURA", value.denominator, enabled, Modifier.weight(1f), denominator = true) { d -> update { it.copy(denominator = d) } }
+        NumberStepper(tr("PULSOS", "BEATS"), value.numerator, enabled, Modifier.weight(1f)) { n -> update { it.copy(numerator = n) } }
+        NumberStepper(tr("FIGURA", "NOTE VALUE"), value.denominator, enabled, Modifier.weight(1f), denominator = true) { d -> update { it.copy(denominator = d) } }
     }
-    Spacer(Modifier.height(6.dp)); LabelValue("NIVEL CLICK", formatDb(value.gainDb), Amber)
+    Spacer(Modifier.height(6.dp)); LabelValue(tr("NIVEL CLICK", "CLICK LEVEL"), formatDb(value.gainDb), Amber)
     Slider(value.gainDb, { gain -> update { it.copy(gainDb = gain) } }, valueRange = -60f..0f, enabled = enabled)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Text("AUDICION EN MAIN", fontSize = 10.sp, fontWeight = FontWeight.Bold); Text("Apagado por seguridad", color = Red, fontSize = 9.sp) }
+        Column(Modifier.weight(1f)) { Text(tr("AUDICIÓN EN MAIN", "AUDITION ON MAIN"), fontSize = 10.sp, fontWeight = FontWeight.Bold); Text(tr("Apagado por seguridad", "Off for safety"), color = Red, fontSize = 9.sp) }
         Switch(value.mainEnabled, { main -> update { it.copy(mainEnabled = main) } }, enabled = enabled)
     }
 }
@@ -1262,13 +1769,13 @@ private fun MetronomeControls(value: MetronomeSettings, enabled: Boolean, update
 private fun RoutingPanel(state: MainUiState, vm: MainViewModel) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            RouteCard("SINGLE MIX", "MAIN L/R", "Mezcla estereo principal", !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.weight(1f))
-            RouteCard("STEREO SPLIT", "L MAIN · R MON", "Click aislado en monitor", state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.weight(1f))
+            RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.weight(1f))
+            RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated on monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.weight(1f))
         }
         Spacer(Modifier.height(6.dp))
         Surface(Modifier.fillMaxWidth().height(68.dp), color = Panel, shape = RoundedCornerShape(8.dp)) {
             Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Eyebrow("HARDWARE ACTUAL"); Text(state.devices.joinToString { it.name }.ifBlank { "Salida Android" }, fontWeight = FontWeight.Bold); Text("${state.diagnostics.actualSampleRate.takeIf { it > 0 } ?: 0} Hz · ${state.diagnostics.actualChannels} canales · XRuns ${state.diagnostics.xRuns}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
+                Column(Modifier.weight(1f)) { Eyebrow(tr("HARDWARE ACTUAL", "CURRENT HARDWARE")); Text(state.devices.joinToString { it.name }.ifBlank { tr("Salida Android", "Android output") }, fontWeight = FontWeight.Bold); Text("${state.diagnostics.actualSampleRate.takeIf { it > 0 } ?: 0} Hz · ${state.diagnostics.actualChannels} ${tr("canales", "channels")} · XRuns ${state.diagnostics.xRuns}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
                 Button(onClick = vm::panic, colors = ButtonDefaults.buttonColors(containerColor = Red, contentColor = Color.White), shape = RoundedCornerShape(8.dp)) { Text("MUTE ALL", fontWeight = FontWeight.Black) }
             }
         }
@@ -1331,6 +1838,17 @@ private fun GeneralSettings(state: MainUiState, vm: MainViewModel) {
         tr("Evita que el dispositivo se suspenda durante el show.", "Prevents the device from sleeping during a show."),
         state.settings.keepScreenAwake,
         vm::setKeepScreenAwake,
+    )
+    SettingsToggle(
+        tr("Modo exclusivo", "Exclusive performance mode"),
+        if (state.notificationPolicyAccessGranted) {
+            tr("Durante la reproducción toma foco de audio y silencia interrupciones; al pausar restaura el estado anterior.",
+                "During playback it takes audio focus and silences interruptions; pausing restores the previous state.")
+        } else {
+            tr("Requiere conceder acceso a No molestar en Android.", "Requires Do Not Disturb access in Android.")
+        },
+        state.settings.exclusivePerformanceMode,
+        vm::setExclusivePerformanceMode,
     )
     SettingsToggle(
         tr("Confirmar acciones destructivas", "Confirm destructive actions"),
@@ -1608,29 +2126,83 @@ private fun AboutLinkLine(label: String, value: String, click: () -> Unit) {
 }
 
 @Composable
-private fun CompactTransport(state: MainUiState, playPause: () -> Unit, stop: () -> Unit, seek: (Float) -> Unit, panic: () -> Unit) {
+private fun CompactTransport(
+    state: MainUiState,
+    previous: () -> Unit,
+    playPause: () -> Unit,
+    stop: () -> Unit,
+    next: () -> Unit,
+    seek: (Float) -> Unit,
+    panic: () -> Unit,
+    openTimeline: () -> Unit,
+    openMixer: () -> Unit,
+    openMaster: () -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val project = state.selectedProject()
     val master = state.selectedMaster()
+    val masterIndex = project?.playlist?.indexOfFirst { it.id == master?.id } ?: -1
+    val canPrevious = masterIndex > 0
+    val canNext = project != null && masterIndex >= 0 && masterIndex < project.playlist.lastIndex
     val rate = state.diagnostics.actualSampleRate.takeIf { it > 0 } ?: 48_000
     val engineDuration = state.diagnostics.durationFrames.toDouble() / rate
     val total = maxOf(engineDuration, master?.durationSeconds() ?: 0.0)
     val position = if (state.diagnostics.durationFrames > 0) state.diagnostics.renderedFrames.toDouble() / rate else 0.0
     val fraction = if (total > 0) (position / total).toFloat().coerceIn(0f, 1f) else 0f
     Surface(color = Color(0xFF0C1116)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(54.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(94.dp)) {
             val compact = maxWidth < 600.dp
-            Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = playPause, enabled = !state.openingOutput, modifier = Modifier.size(width = 62.dp, height = 44.dp), contentPadding = PaddingValues(0.dp), colors = ButtonDefaults.buttonColors(containerColor = if (state.diagnostics.toneEnabled) Amber else Mint, contentColor = Bg), shape = RoundedCornerShape(9.dp)) {
-                VectorIcon(if (state.diagnostics.toneEnabled) R.drawable.ic_ui_pause else R.drawable.ic_ui_play, tr("Reproducir o pausar", "Play or pause"), Bg, Modifier.size(25.dp))
+            Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                        Text(master?.name ?: tr("Sin pista", "No track"), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!compact) Text("${masterIndex + 1}/${project?.playlist?.size ?: 0}  ·  ${if (state.diagnostics.toneEnabled) "LIVE" else "READY"}", color = if (state.diagnostics.toneEnabled) Mint else TextMuted, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    TransportIconButton(R.drawable.ic_ui_previous, tr("Pista anterior", "Previous track"), canPrevious, previous)
+                    Spacer(Modifier.width(4.dp))
+                    Button(onClick = playPause, enabled = !state.openingOutput, modifier = Modifier.size(52.dp), contentPadding = PaddingValues(0.dp), colors = ButtonDefaults.buttonColors(containerColor = if (state.diagnostics.toneEnabled) Amber else Mint, contentColor = Bg), shape = CircleShape) {
+                        VectorIcon(if (state.diagnostics.toneEnabled) R.drawable.ic_ui_pause else R.drawable.ic_ui_play, tr("Reproducir o pausar", "Play or pause"), Bg, Modifier.size(27.dp))
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    TransportIconButton(R.drawable.ic_ui_next, tr("Pista siguiente", "Next track"), canNext, next)
+                    if (!compact) {
+                        Spacer(Modifier.width(4.dp))
+                        TransportIconButton(R.drawable.ic_ui_stop, tr("Detener", "Stop"), true, stop)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Box {
+                        TransportIconButton(R.drawable.ic_ui_more, tr("Más opciones de transporte", "More transport options"), true) { menuExpanded = true }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            if (compact) TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
+                            TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
+                            TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
+                            TimelineMenuItem(DawIcon.MASTER, tr("Abrir master", "Open master"), project != null) { menuExpanded = false; openMaster() }
+                            TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Slider(fraction, seek, enabled = state.diagnostics.durationFrames > 0, modifier = Modifier.weight(1f).height(30.dp))
+                    Text("${timeText(position)}/${timeText(total)}", Modifier.width(if (compact) 92.dp else 108.dp), color = Mint, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
+                    if (!compact) Text("  XR ${state.diagnostics.xRuns}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                }
             }
-            Spacer(Modifier.width(6.dp)); OutlinedButton(onClick = stop, modifier = Modifier.size(44.dp), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(9.dp)) { VectorIcon(R.drawable.ic_ui_stop, tr("Detener", "Stop"), TextMain, Modifier.size(21.dp)) }
-            Spacer(Modifier.width(10.dp))
-            if (!compact) Text(master?.name ?: "Sin pista", Modifier.width(120.dp), fontWeight = FontWeight.Bold, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Slider(fraction, seek, enabled = state.diagnostics.durationFrames > 0, modifier = Modifier.weight(1f).height(30.dp))
-            Text("${timeText(position)}/${timeText(total)}", Modifier.width(if (compact) 72.dp else 92.dp), color = Mint, fontFamily = FontFamily.Monospace, fontSize = if (compact) 8.sp else 9.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-            if (!compact) Text("XR ${state.diagnostics.xRuns}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 7.sp)
-            Spacer(Modifier.width(if (compact) 2.dp else 8.dp))
-            TextButton(onClick = panic, modifier = Modifier.height(36.dp), contentPadding = PaddingValues(horizontal = if (compact) 6.dp else 10.dp), colors = ButtonDefaults.textButtonColors(contentColor = Red)) { Text(if (compact) "!" else "PANIC", fontWeight = FontWeight.Black, fontSize = 8.sp) }
-            }
+        }
+    }
+}
+
+@Composable
+private fun TransportIconButton(iconRes: Int, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(44.dp).semantics { contentDescription = label; role = Role.Button },
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, if (enabled) Border else Border.copy(alpha = .35f)),
+        shape = RoundedCornerShape(9.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            VectorIcon(iconRes, null, if (enabled) TextMain else TextMuted.copy(alpha = .35f), Modifier.size(21.dp))
         }
     }
 }
@@ -1658,6 +2230,16 @@ private fun TinyIconButton(iconRes: Int, label: String, onClick: () -> Unit) {
 }
 
 @Composable
+private fun CompactIconButton(iconRes: Int, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.size(30.dp).semantics { contentDescription = label; role = Role.Button },
+        color = Color.Transparent,
+        shape = RoundedCornerShape(6.dp),
+    ) { Box(contentAlignment = Alignment.Center) { VectorIcon(iconRes, null, TextMuted, Modifier.size(18.dp)) } }
+}
+
+@Composable
 private fun EmptyState(title: String, body: String, action: String, onClick: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Box(Modifier.size(64.dp).background(Mint.copy(alpha = .12f), CircleShape), contentAlignment = Alignment.Center) { VectorIcon(R.drawable.ic_ui_add, null, Mint, Modifier.size(32.dp)) }
@@ -1670,14 +2252,75 @@ private fun EmptyState(title: String, body: String, action: String, onClick: () 
 @Composable private fun StepChip(number: String, label: String, ready: Boolean) { Box(Modifier.size(24.dp).background(if (ready) Mint else Border, CircleShape), contentAlignment = Alignment.Center) { if (ready) VectorIcon(R.drawable.ic_ui_check, null, Bg, Modifier.size(15.dp)) else Text(number, color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Black) }; Spacer(Modifier.width(6.dp)); Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
 private enum class DawIcon(val iconRes: Int) {
     ADD(R.drawable.ic_ui_add),
+    EDIT(R.drawable.ic_ui_edit),
+    OPEN(R.drawable.ic_ui_open),
+    MASTER(R.drawable.ic_ui_master),
+    MORE(R.drawable.ic_ui_more),
+    STAGE(R.drawable.ic_ui_stage),
+    PANIC(R.drawable.ic_ui_panic),
+    STOP(R.drawable.ic_ui_stop),
     TIMELINE(R.drawable.ic_ui_timeline),
     MIXER(R.drawable.ic_ui_mixer),
     SPLIT(R.drawable.ic_ui_split),
+    EXTRACT(R.drawable.ic_ui_extract),
+    MARKER(R.drawable.ic_ui_marker),
+    METRONOME(R.drawable.ic_ui_metronome),
     DELETE(R.drawable.ic_ui_delete),
     UNDO(R.drawable.ic_ui_undo),
     REDO(R.drawable.ic_ui_redo),
     ZOOM_IN(R.drawable.ic_ui_zoom_in),
     ZOOM_OUT(R.drawable.ic_ui_zoom_out),
+}
+
+@Composable
+private fun TimelineMenuItem(
+    icon: DawIcon,
+    label: String,
+    enabled: Boolean,
+    danger: Boolean = false,
+    active: Boolean = false,
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(label, fontSize = 12.sp, color = when { danger && enabled -> Red; active -> Amber; else -> TextMain }) },
+        onClick = onClick,
+        enabled = enabled,
+        leadingIcon = { VectorIcon(icon.iconRes, null, when { danger && enabled -> Red; active -> Amber; else -> TextMuted }, Modifier.size(20.dp)) },
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
+private fun TimelineSwitchMenuItem(
+    icon: DawIcon,
+    label: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    change: (Boolean) -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text(label, fontSize = 12.sp, color = if (enabled) TextMain else TextMuted.copy(alpha = .45f)) },
+        onClick = { if (enabled) change(!checked) },
+        enabled = enabled,
+        leadingIcon = { VectorIcon(icon.iconRes, null, if (checked && enabled) Amber else TextMuted, Modifier.size(20.dp)) },
+        trailingIcon = {
+            Switch(
+                checked = checked,
+                onCheckedChange = if (enabled) change else null,
+                enabled = enabled,
+                modifier = Modifier.size(width = 48.dp, height = 32.dp),
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Bg,
+                    checkedTrackColor = Amber,
+                    checkedBorderColor = Amber,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = Panel,
+                    uncheckedBorderColor = Border,
+                ),
+            )
+        },
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+    )
 }
 
 @Composable
@@ -1699,7 +2342,7 @@ private fun DawIconButton(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.size(48.dp).semantics {
+        modifier = modifier.size(44.dp).semantics {
             contentDescription = label
             role = Role.Button
         },
@@ -1708,11 +2351,11 @@ private fun DawIconButton(
             danger && enabled -> Red.copy(alpha = .08f)
             else -> Color.Transparent
         },
-        shape = RoundedCornerShape(7.dp),
-        border = BorderStroke(1.dp, if (selected) Blue else Border.copy(alpha = if (enabled) .9f else .35f)),
+        shape = RoundedCornerShape(9.dp),
+        border = if (selected) BorderStroke(1.dp, Blue) else null,
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            VectorIcon(icon.iconRes, null, ink, Modifier.size(26.dp))
+            VectorIcon(icon.iconRes, null, ink, Modifier.size(21.dp))
         }
     }
 }
@@ -1754,7 +2397,7 @@ private fun NumberStepper(label: String, value: Int, enabled: Boolean, modifier:
 @Composable
 private fun RouteCard(title: String, route: String, detail: String, active: Boolean, click: () -> Unit, modifier: Modifier) {
     Surface(onClick = click, modifier = modifier.fillMaxHeight(), color = if (active) Mint.copy(alpha = .1f) else Panel, shape = RoundedCornerShape(8.dp), border = androidx.compose.foundation.BorderStroke(1.dp, if (active) Mint else Border.copy(alpha = .5f))) {
-        Column(Modifier.padding(16.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(8.dp).then(if (active) Modifier.background(Mint, CircleShape) else Modifier.border(1.dp, TextMuted, CircleShape))); Spacer(Modifier.width(7.dp)); Text(if (active) "ACTIVO" else "DISPONIBLE", color = if (active) Mint else TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Black) }; Spacer(Modifier.height(8.dp)); Text(title, fontWeight = FontWeight.Black, fontSize = 15.sp); Text(route, color = Amber, fontFamily = FontFamily.Monospace, fontSize = 11.sp); Text(detail, color = TextMuted, fontSize = 9.sp) }
+        Column(Modifier.padding(16.dp)) { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(8.dp).then(if (active) Modifier.background(Mint, CircleShape) else Modifier.border(1.dp, TextMuted, CircleShape))); Spacer(Modifier.width(7.dp)); Text(if (active) tr("ACTIVO", "ACTIVE") else tr("DISPONIBLE", "AVAILABLE"), color = if (active) Mint else TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Black) }; Spacer(Modifier.height(8.dp)); Text(title, fontWeight = FontWeight.Black, fontSize = 15.sp); Text(route, color = Amber, fontFamily = FontFamily.Monospace, fontSize = 11.sp); Text(detail, color = TextMuted, fontSize = 9.sp) }
     }
 }
 
@@ -1824,6 +2467,142 @@ private fun EmptyStemDialog(dismiss: () -> Unit, confirm: (String, Double) -> Un
         },
         dismissButton = { TextButton(onClick = dismiss) { Text(tr("CANCELAR", "CANCEL")) } },
     )
+}
+
+@Composable
+private fun TimelineMarkerDialog(
+    marker: TimelineMarker?,
+    dismiss: () -> Unit,
+    save: (String, TimelineMarkerKind, Boolean, Int) -> Unit,
+    delete: (() -> Unit)?,
+) {
+    var label by remember(marker?.id) { mutableStateOf(marker?.label.orEmpty()) }
+    var kind by remember(marker?.id) { mutableStateOf(marker?.kind ?: TimelineMarkerKind.CUSTOM) }
+    var voiceEnabled by remember(marker?.id) { mutableStateOf(marker?.voiceCueEnabled ?: true) }
+    var leadBeats by remember(marker?.id) { mutableIntStateOf(marker?.voiceLeadBeats ?: 2) }
+    AlertDialog(
+        onDismissRequest = dismiss,
+        title = { Text(if (marker == null) tr("Nueva marca", "New marker") else tr("Editar marca", "Edit marker")) },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it.take(48) },
+                    singleLine = true,
+                    label = { Text(tr("Texto hablado y visible", "Visible and spoken text")) },
+                    supportingText = { Text(tr("Ej.: Estribillo, Puente, Solo", "E.g. Chorus, Bridge, Solo")) },
+                )
+                Text(tr("TIPO DE SECCIÓN", "SECTION TYPE"), color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val columns = if (maxWidth >= 360.dp) 3 else 2
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimelineMarkerKind.entries.chunked(columns).forEach { rowItems ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                rowItems.forEach { item ->
+                                    MarkerKindChoice(
+                                        label = markerKindLabel(item),
+                                        selected = kind == item,
+                                        modifier = Modifier.weight(1f),
+                                    ) { kind = item }
+                                }
+                                repeat(columns - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+                Surface(
+                    Modifier.fillMaxWidth(),
+                    color = Panel,
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, if (voiceEnabled) Mint.copy(alpha = .55f) else Border),
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(36.dp).background(Mint.copy(alpha = .10f), CircleShape), contentAlignment = Alignment.Center) {
+                            VectorIcon(R.drawable.ic_ui_voice, null, if (voiceEnabled) Mint else TextMuted, Modifier.size(19.dp))
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(tr("Cue de voz", "Voice cue"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text(tr("Aviso previo · sólo MONITOR", "Advance cue · MONITOR only"), color = TextMuted, fontSize = 9.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = voiceEnabled,
+                            onCheckedChange = { voiceEnabled = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Bg,
+                                checkedTrackColor = Mint,
+                                checkedBorderColor = Mint,
+                                uncheckedThumbColor = TextMuted,
+                                uncheckedTrackColor = Raised,
+                                uncheckedBorderColor = Border,
+                            ),
+                        )
+                    }
+                }
+                if (voiceEnabled) {
+                    NumberStepper(
+                        label = tr("GOLPES DE ANTICIPACIÓN", "LEAD BEATS"),
+                        value = leadBeats,
+                        enabled = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        change = { leadBeats = it.coerceIn(0, 16) },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { save(label, kind, voiceEnabled, leadBeats) }, enabled = label.isNotBlank()) {
+                Text(tr("GUARDAR", "SAVE"))
+            }
+        },
+        dismissButton = {
+            Row {
+                if (delete != null) TextButton(onClick = delete, colors = ButtonDefaults.textButtonColors(contentColor = Red)) {
+                    Text(tr("ELIMINAR", "DELETE"))
+                }
+                TextButton(onClick = dismiss) { Text(tr("CANCELAR", "CANCEL")) }
+            }
+        },
+    )
+}
+
+@Composable
+private fun MarkerKindChoice(label: String, selected: Boolean, modifier: Modifier = Modifier, click: () -> Unit) {
+    Surface(
+        onClick = click,
+        modifier = modifier.height(40.dp),
+        color = if (selected) Blue else Panel,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, if (selected) Blue else Border),
+    ) {
+        Box(Modifier.fillMaxSize().padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
+            Text(
+                label,
+                color = if (selected) Color.White else TextMuted,
+                fontSize = 9.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun markerKindLabel(value: TimelineMarkerKind): String = when (value) {
+    TimelineMarkerKind.INTRO -> tr("INTRO", "INTRO")
+    TimelineMarkerKind.VERSE -> tr("VERSO", "VERSE")
+    TimelineMarkerKind.PRE_CHORUS -> tr("PRE", "PRE")
+    TimelineMarkerKind.CHORUS -> tr("ESTRIBILLO", "CHORUS")
+    TimelineMarkerKind.BRIDGE -> tr("PUENTE", "BRIDGE")
+    TimelineMarkerKind.SOLO -> "SOLO"
+    TimelineMarkerKind.BREAKDOWN -> "BREAKDOWN"
+    TimelineMarkerKind.OUTRO -> "OUTRO"
+    TimelineMarkerKind.CUSTOM -> tr("OTRO", "CUSTOM")
 }
 
 @Composable

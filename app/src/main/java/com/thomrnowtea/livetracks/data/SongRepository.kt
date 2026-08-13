@@ -6,6 +6,8 @@ import com.thomrnowtea.livetracks.domain.Project
 import com.thomrnowtea.livetracks.domain.SourceMetadata
 import com.thomrnowtea.livetracks.domain.Track
 import com.thomrnowtea.livetracks.domain.TrackType
+import com.thomrnowtea.livetracks.domain.TimelineMarker
+import com.thomrnowtea.livetracks.domain.TimelineMarkerKind
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -53,9 +55,11 @@ class ProjectStoreCodec {
             project.playlist.forEach { master ->
                 appendLine(
                     (listOf("MASTER", field(master.id), field(master.name), master.gainDb, master.pan, master.metronomeOverride != null) +
-                        encodeMetronome(master.metronomeOverride ?: project.defaultMetronome)).joinToString("\t"),
+                        encodeMetronome(master.metronomeOverride ?: project.defaultMetronome) +
+                        listOf(master.tempoGridVisible, optionalField(master.clickReferenceTrackId))).joinToString("\t"),
                 )
                 master.tracks.forEach { appendLine(encodeTrack(it)) }
+                master.markers.forEach { appendLine(encodeMarker(it)) }
                 appendLine("ENDMASTER")
             }
             appendLine("ENDPROJECT")
@@ -69,10 +73,10 @@ class ProjectStoreCodec {
         val schema = lines.firstOrNull()?.substringAfter("LIVETRACKS\t", "")?.toIntOrNull()
             ?: throw IllegalArgumentException("Unsupported library schema")
         require(schema in 1..SCHEMA_VERSION) { "Unsupported library schema" }
-        return if (schema >= 3) decodeModern(lines) else migrateLegacy(lines, schema)
+        return if (schema >= 3) decodeModern(lines, schema) else migrateLegacy(lines, schema)
     }
 
-    private fun decodeModern(lines: List<String>): List<Project> {
+    private fun decodeModern(lines: List<String>, schema: Int): List<Project> {
         val projects = mutableListOf<Project>()
         var index = 1
         while (index < lines.size) {
@@ -81,9 +85,14 @@ class ProjectStoreCodec {
             val playlist = mutableListOf<MasterTrack>()
             while (index < lines.size && lines[index] != "ENDPROJECT") {
                 val masterFields = lines[index++].split('\t')
-                require(masterFields.size == 12 && masterFields[0] == "MASTER") { "Corrupt master record" }
+                val expectedMasterSize = if (schema >= 6) 14 else 12
+                require(masterFields.size == expectedMasterSize && masterFields[0] == "MASTER") { "Corrupt master record" }
                 val tracks = mutableListOf<Track>()
-                while (index < lines.size && lines[index] != "ENDMASTER") tracks += decodeTrack(lines[index++])
+                val markers = mutableListOf<TimelineMarker>()
+                while (index < lines.size && lines[index] != "ENDMASTER") {
+                    val line = lines[index++]
+                    if (schema >= 5 && line.startsWith("MARKER\t")) markers += decodeMarker(line) else tracks += decodeTrack(line)
+                }
                 require(index < lines.size && lines[index++] == "ENDMASTER") { "Missing master terminator" }
                 val hasOverride = masterFields[5].toBooleanStrict()
                 playlist += MasterTrack(
@@ -93,6 +102,9 @@ class ProjectStoreCodec {
                     gainDb = masterFields[3].toFloat(),
                     pan = masterFields[4].toFloat(),
                     metronomeOverride = if (hasOverride) decodeMetronome(masterFields, 6) else null,
+                    markers = markers,
+                    tempoGridVisible = if (schema >= 6) masterFields[12].toBooleanStrict() else true,
+                    clickReferenceTrackId = if (schema >= 6) optionalUnfield(masterFields[13])?.takeIf { id -> tracks.any { it.id == id } } else null,
                 )
             }
             require(index < lines.size && lines[index++] == "ENDPROJECT") { "Missing project terminator" }
@@ -154,6 +166,24 @@ class ProjectStoreCodec {
         track.muted, track.soloed, track.enabled, track.mainSendDb, track.monitorSendDb, track.type.name,
     ).joinToString("\t")
 
+    private fun encodeMarker(marker: TimelineMarker): String = listOf(
+        "MARKER", field(marker.id), field(marker.label), marker.positionFrames, marker.kind.name,
+        marker.voiceCueEnabled, marker.voiceLeadBeats,
+    ).joinToString("\t")
+
+    private fun decodeMarker(line: String): TimelineMarker {
+        val value = line.split('\t')
+        require(value.size == 7 && value[0] == "MARKER") { "Corrupt marker record" }
+        return TimelineMarker(
+            id = unfield(value[1]),
+            label = unfield(value[2]),
+            positionFrames = value[3].toLong(),
+            kind = TimelineMarkerKind.valueOf(value[4]),
+            voiceCueEnabled = value[5].toBooleanStrict(),
+            voiceLeadBeats = value[6].toInt(),
+        )
+    }
+
     private fun decodeTrack(line: String): Track {
         val value = line.split('\t')
         require(value.size in setOf(16, 18) && value[0] == "TRACK") { "Corrupt track record" }
@@ -176,5 +206,5 @@ class ProjectStoreCodec {
     private fun optionalField(value: String?) = value?.let(::field) ?: "-"
     private fun optionalUnfield(value: String) = value.takeUnless { it == "-" }?.let(::unfield)
 
-    companion object { const val SCHEMA_VERSION = 4 }
+    companion object { const val SCHEMA_VERSION = 6 }
 }

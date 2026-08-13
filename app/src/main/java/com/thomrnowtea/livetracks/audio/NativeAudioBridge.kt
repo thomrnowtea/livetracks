@@ -16,6 +16,7 @@ internal object NativeAudioBridge {
     external fun setTrackPan(trackIndex: Int, pan: Float)
     external fun setTrackMuted(trackIndex: Int, muted: Boolean)
     external fun setTrackSoloed(trackIndex: Int, soloed: Boolean)
+    external fun setTrackSoloSafe(trackIndex: Int, soloSafe: Boolean)
     external fun setTrackSends(trackIndex: Int, mainSend: Float, monitorSend: Float)
     external fun setTrackStartOffset(trackIndex: Int, outputFrames: Long)
     external fun setTrackSourceRange(trackIndex: Int, startFrame: Long, endFrameExclusive: Long)
@@ -67,6 +68,7 @@ class NativeAudioController {
     fun setTrackPan(trackIndex: Int, pan: Float) = NativeAudioBridge.setTrackPan(trackIndex, pan)
     fun setTrackMuted(trackIndex: Int, muted: Boolean) = NativeAudioBridge.setTrackMuted(trackIndex, muted)
     fun setTrackSoloed(trackIndex: Int, soloed: Boolean) = NativeAudioBridge.setTrackSoloed(trackIndex, soloed)
+    fun setTrackSoloSafe(trackIndex: Int, soloSafe: Boolean) = NativeAudioBridge.setTrackSoloSafe(trackIndex, soloSafe)
     fun setTrackSends(trackIndex: Int, mainSend: Float, monitorSend: Float) = NativeAudioBridge.setTrackSends(trackIndex, mainSend, monitorSend)
     fun setTrackStartOffset(trackIndex: Int, outputFrames: Long) = NativeAudioBridge.setTrackStartOffset(trackIndex, outputFrames)
     fun setTrackSourceRange(trackIndex: Int, startFrame: Long, endFrameExclusive: Long) =

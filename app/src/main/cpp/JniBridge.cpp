@@ -83,6 +83,13 @@ Java_com_thomrnowtea_livetracks_audio_NativeAudioBridge_setTrackSoloed(
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_thomrnowtea_livetracks_audio_NativeAudioBridge_setTrackSoloSafe(
+    JNIEnv*, jobject, jint trackIndex, jboolean soloSafe
+) {
+    engine.setTrackSoloSafe(trackIndex, soloSafe == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_thomrnowtea_livetracks_audio_NativeAudioBridge_setTrackSends(
     JNIEnv*, jobject, jint trackIndex, jfloat mainSend, jfloat monitorSend
 ) {

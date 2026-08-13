@@ -1,11 +1,11 @@
 # Implementation status
 
-Last updated: 2026-08-11
+Last updated: 2026-08-13
 
 ## Done
 
 - Repository/toolchain bootstrap, Compose, NDK/CMake, Oboe Prefab, and documentation.
-- Immutable Project/MasterTrack/Track/output models, safe click/cue defaults, schema-v3 atomic persistence, and v1/v2 migration tests.
+- Immutable Project/MasterTrack/Track/TimelineMarker/output models, safe click/cue defaults, schema-v6 atomic persistence, and v1-v5 migration tests.
 - Native Oboe stream, allocation-free mixing callback, absolute transport-frame counter, JNI diagnostics, Android output enumeration, and route-change emergency stop.
 - Four adaptive portrait/landscape workspaces with persistent transport: Projects, Playlist, Track (Timeline/Mix Console), and Master.
 - Adaptive Settings workspace with persisted Spanish/English selection, screen-awake and confirmation controls, configurable new-stem defaults, version details, and credits.
@@ -17,20 +17,32 @@ Last updated: 2026-08-11
 - Horizontally scrollable channel bank with large console-style vertical faders, rotary pan knobs, mute/solo, MAIN/MONITOR sends, and real callback meters. Landscape exposes about three channels; portrait exposes one to two without shrinking controls.
 - Per-stem draggable timeline entry offsets connected to native playback; total duration includes the latest offset plus source duration.
 - Real peak envelopes for WAV and Android-decoded audio, virtual millisecond zoom, a transport-synchronized draggable playhead, edge/playhead snapping, non-destructive split, and a 50-step Undo/Redo timeline history.
+- Musical beat/downbeat grid driven by each master track's effective metronome, per-song visibility, beat/marker snapping, and draggable marker lines spanning every stem lane.
+- Timeline/Mix Console selection in the global context header, with independently collapsible tool rail and stem-label panel whose state survives portrait/landscape recomposition.
+- Compact non-scrolling edit toolbar with persistent Add/Undo/Redo/Split actions and a labeled overflow menu for zoom, markers, extraction, and destructive actions.
+- Two-row transport with a dominant Play control above a full-width seek bar; secondary workspace, Stop, and Panic actions live in an explicit overflow menu.
+- Intent-based Master workspace navigation for show output, song output, click/tempo, and physical routing.
+- Safe previous/next show transport: a skip stops output, resets the playhead, and arms the neighboring master track without autoplay.
+- Collapsible Playlist preparation header plus a full-screen Stage Mode for performers, with a clean cue list, armed/live state, next-song preview, large Previous/Play/Stop/Next targets, and no autoplay on selection.
+- Terminal waveform states distinguish an intentionally empty region from an unavailable analysis instead of leaving an endless analysis label.
+- Reversible extraction of a selected split clip or stem into the next independent master track, with its own copied metronome override.
+- Typed section markers with optional pre-rendered Android TTS announcements, configurable lead beats, MONITOR-only routing, solo-safe playback, and persistence/migration coverage.
+- Optional exclusive performance mode with transient-exclusive audio focus, temporary Do Not Disturb policy, automatic restoration, and a separate keep-screen-awake switch.
 - Android MediaCodec preprocessing for device-supported MP3, AAC/M4A, FLAC and OGG sources; conversion occurs before playback and never in the realtime callback.
 - Two-stage master configuration: project volume/pan plus selected playlist-item volume/pan.
-- Per-master-track transport-locked metronome with an inheritable project template. There is no global playback metronome; MAIN send remains protected by default.
-- Local verification: unit tests passed; arm64-v8a and x86_64 native builds passed; app installed on the landscape emulator.
+- Per-master-track transport-locked metronome with an inheritable project template. A single persisted stem may replace the native click; designation converts it to CLICK, forces MAIN to negative infinity, and keeps BPM/meter available for the grid, snapping, and cues. There is no global playback metronome.
+- Local verification: unit tests passed; arm64-v8a and x86_64 native builds passed; real WAV envelopes and active emulator audio output passed in portrait and landscape.
 
 ## Partial
 
 - WAV files are predecoded into memory before playback: maximum 16 tracks and 512 MB per file. Decoder-worker ring buffers are still required for long show assets.
 - Route-change handling is connected; full foreground playback-service/lifecycle recovery is pending.
+- Voice cues depend on an installed Android TTS voice and currently allow up to 32 enabled announcements per master track.
 
 ## Pending
 
 - Decoder-worker ring buffers, coordinated seek, waveform cache, and pre-Play file metadata validation.
-- Editable MAIN/MONITOR send levels, count-in/cues timeline, playlist auto-advance, and complete Stereo Split output tests.
+- Editable MAIN/MONITOR send levels, count-in, playlist auto-advance, and complete Stereo Split voice/click output tests.
 - Live Mode, foreground playback service, USB multichannel, and video.
 
 ## Blocked by hardware
@@ -39,4 +51,4 @@ Last updated: 2026-08-11
 
 ## How to test
 
-Install the APK, create/select a project, add a playlist item, open Track, and choose PCM WAV stems. Drag a region in Timeline and confirm the total duration changes. Open Mix Console and press Play; confirm the delayed stem enters at its marker, meters/faders/mute/solo affect real audio, and click remains absent from MAIN. Configure project defaults and per-item overrides only from Master. In Settings > About, verify both update channels, download an official newer signed build, reject an altered checksum/package/signature, authorize LiveTracks as an install source, and confirm Android still requires installation approval. Physical routing, long-file stability, and the signed updater path remain unverified until results are recorded on physical hardware.
+Install the APK, create/select a project, add a playlist item, open Track, and choose PCM WAV stems. Validate the same flow in portrait and landscape. Collapse and restore the Playlist preparation header, then enter Stage Mode: select each cue, verify it only arms, and exercise Previous/Play/Stop/Next with real audio before returning to editing. Split a stem, extract the second clip, and confirm a neighboring master track is created with an independent metronome. Add and drag section markers; verify beat/downbeat lines, millisecond placement, TTS render state, lead time, and that speech remains absent from MAIN. Open Mix Console and press Play; confirm delayed stems, meters/faders/mute/solo, click routing, screen-awake, and exclusive-mode restoration. Physical routing, long-file stability, and the signed updater path remain unverified until results are recorded on physical hardware.

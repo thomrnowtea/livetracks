@@ -7,6 +7,8 @@ import com.thomrnowtea.livetracks.domain.SILENCE_DB
 import com.thomrnowtea.livetracks.domain.SourceMetadata
 import com.thomrnowtea.livetracks.domain.Track
 import com.thomrnowtea.livetracks.domain.TrackType
+import com.thomrnowtea.livetracks.domain.TimelineMarker
+import com.thomrnowtea.livetracks.domain.TimelineMarkerKind
 import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -26,7 +28,10 @@ class SongStoreCodecTest {
                 name = "Show principal",
                 playlist = listOf(
                     MasterTrack("master-1", "Intro", listOf(track), gainDb = -2f, pan = .1f,
-                        metronomeOverride = MetronomeSettings(true, 123.5, 7, 8, -9f, false)),
+                        metronomeOverride = MetronomeSettings(true, 123.5, 7, 8, -9f, false),
+                        markers = listOf(TimelineMarker("marker-1", "Estribillo", 192_000, TimelineMarkerKind.CHORUS, true, 4)),
+                        tempoGridVisible = false,
+                        clickReferenceTrackId = track.id),
                 ),
                 masterGainDb = -1f,
                 masterPan = -.2f,
@@ -78,6 +83,41 @@ class SongStoreCodecTest {
         assertEquals(0L, track.sourceStartFrame)
         assertNull(track.sourceEndFrameExclusive)
         assertEquals(10.0, track.durationSeconds(), 0.0001)
+    }
+
+    @Test
+    fun `schema four master migrates with an empty marker lane`() {
+        fun field(value: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray())
+        val legacy = listOf(
+            "LIVETRACKS\t4",
+            "PROJECT\t${field("p")}\t${field("Show")}\t0.0\t0.0\tfalse\t120.0\t4\t4\t-12.0\tfalse",
+            "MASTER\t${field("m")}\t${field("Song")}\t0.0\t0.0\tfalse\tfalse\t120.0\t4\t4\t-12.0\tfalse",
+            "ENDMASTER",
+            "ENDPROJECT",
+        ).joinToString("\n")
+
+        val master = codec.decode(legacy).single().playlist.single()
+
+        assertEquals(emptyList<TimelineMarker>(), master.markers)
+        assertEquals(true, master.tempoGridVisible)
+        assertNull(master.clickReferenceTrackId)
+    }
+
+    @Test
+    fun `schema five master migrates with visible tempo grid and native click`() {
+        fun field(value: String) = Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray())
+        val legacy = listOf(
+            "LIVETRACKS\t5",
+            "PROJECT\t${field("p")}\t${field("Show")}\t0.0\t0.0\tfalse\t120.0\t4\t4\t-12.0\tfalse",
+            "MASTER\t${field("m")}\t${field("Song")}\t0.0\t0.0\tfalse\tfalse\t120.0\t4\t4\t-12.0\tfalse",
+            "ENDMASTER",
+            "ENDPROJECT",
+        ).joinToString("\n")
+
+        val master = codec.decode(legacy).single().playlist.single()
+
+        assertEquals(true, master.tempoGridVisible)
+        assertNull(master.clickReferenceTrackId)
     }
 
     @Test
