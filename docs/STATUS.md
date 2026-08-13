@@ -32,6 +32,7 @@ Last updated: 2026-08-13
 - Two-stage master configuration: project volume/pan plus selected playlist-item volume/pan.
 - Per-master-track transport-locked metronome with an inheritable project template. A single persisted stem may replace the native click; designation converts it to CLICK, forces MAIN to negative infinity, and keeps BPM/meter available for the grid, snapping, and cues. There is no global playback metronome.
 - Local verification: unit tests passed; arm64-v8a and x86_64 native builds passed; real WAV envelopes and active emulator audio output passed in portrait and landscape.
+- Release verification: the owner completed the in-app signed upgrade from `v0.1.0-alpha.1` to `v0.2.0-alpha.1` on a physical Android phone. The device model is intentionally not recorded in the public repository because this result validates the updater flow, not audio-hardware compatibility.
 
 ## Partial
 
@@ -51,4 +52,4 @@ Last updated: 2026-08-13
 
 ## How to test
 
-Install the APK, create/select a project, add a playlist item, open Track, and choose PCM WAV stems. Validate the same flow in portrait and landscape. Collapse and restore the Playlist preparation header, then enter Stage Mode: select each cue, verify it only arms, and exercise Previous/Play/Stop/Next with real audio before returning to editing. Split a stem, extract the second clip, and confirm a neighboring master track is created with an independent metronome. Add and drag section markers; verify beat/downbeat lines, millisecond placement, TTS render state, lead time, and that speech remains absent from MAIN. Open Mix Console and press Play; confirm delayed stems, meters/faders/mute/solo, click routing, screen-awake, and exclusive-mode restoration. Physical routing, long-file stability, and the signed updater path remain unverified until results are recorded on physical hardware.
+Install the APK, create/select a project, add a playlist item, open Track, and choose PCM WAV stems. Validate the same flow in portrait and landscape. Collapse and restore the Playlist preparation header, then enter Stage Mode: select each cue, verify it only arms, and exercise Previous/Play/Stop/Next with real audio before returning to editing. Split a stem, extract the second clip, and confirm a neighboring master track is created with an independent metronome. Add and drag section markers; verify beat/downbeat lines, millisecond placement, TTS render state, lead time, and that speech remains absent from MAIN. Open Mix Console and press Play; confirm delayed stems, meters/faders/mute/solo, click routing, screen-awake, and exclusive-mode restoration. Physical audio routing and long-file stability remain unverified until results are recorded on the exact stage hardware.

@@ -21,6 +21,14 @@ For Stage Mode, verify the Playlist preparation header collapses/restores and re
 
 For the signed updater path, start from an older release-signed APK. Test stable and pre-release filtering, interrupted-download recovery, a valid upgrade, and deliberately altered metadata/checksum/package/signature. A debug APK has a different certificate and must reject a release APK; that rejection is expected, not an updater failure.
 
+## Recorded release checks
+
+- `2026-08-13`: the project owner completed the in-app update from signed `v0.1.0-alpha.1` (version code 1) to signed `v0.2.0-alpha.1` (version code 2) on a physical Android phone.
+- Both published APKs were independently checked against their release SHA-256 files and verified as package `com.thomrnowtea.livetracks` with the same signing-certificate digest.
+- An emulator package upgrade preserved `firstInstallTime` and a project created under schema v5 was visible after migration to schema v6.
+
+The physical device model is deliberately omitted because this check validates release discovery/download/install and persistence migration only. It must not be cited as evidence for latency, routing, USB or long-session stability.
+
 ## Physical sequence
 
 1. Internal speaker: open output, run conservative tone, verify Single Mix and diagnostics.
