@@ -28,7 +28,8 @@ class PerformanceModeController(context: Context) {
                 previousFilter = notificationManager.currentInterruptionFilter
                 previousPolicy = notificationManager.notificationPolicy
                 val silentPolicy = NotificationManager.Policy(
-                    0,
+                    NotificationManager.Policy.PRIORITY_CATEGORY_MEDIA or
+                        NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS,
                     NotificationManager.Policy.PRIORITY_SENDERS_ANY,
                     NotificationManager.Policy.PRIORITY_SENDERS_ANY,
                 )
