@@ -720,10 +720,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         _state.update { it.copy(openingOutput = true, message = "${uiText("Preparando", "Preparing")} ${master.tracks.size} stems...") }
         viewModelScope.launch(Dispatchers.IO) {
+            // Complete DND/exclusive transitions before creating the Oboe stream.
+            // Some Android builds stop an already-open stream for the transition.
+            val exclusiveReady = performanceMode.activate(current.settings.exclusivePerformanceMode)
             requestedSampleRate = hardware.nativeOutputSampleRate()
             var diagnostics = audio.open(requestedSampleRate)
             var error: String? = if (!diagnostics.outputOpen) diagnostics.lastError else null
-            var exclusiveWarning = false
+            var exclusiveWarning = !exclusiveReady
             val metadata = mutableMapOf<String, SourceMetadata>()
             val voiceMarkers = master.markers
                 .filter(TimelineMarker::voiceCueEnabled)
@@ -785,8 +788,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (outputRate > 0 && _state.value.timelineCursorFrames > 0) {
                     audio.seekTransport((_state.value.timelineCursorFrames.toDouble() * outputRate / TIMELINE_SAMPLE_RATE).roundToLong())
                 }
-                val exclusiveReady = performanceMode.activate(_state.value.settings.exclusivePerformanceMode)
-                exclusiveWarning = !exclusiveReady
                 audio.setToneEnabled(true)
                 loadedSelectionKey = selectionKey()
                 diagnostics = audio.diagnostics(requestedSampleRate)
