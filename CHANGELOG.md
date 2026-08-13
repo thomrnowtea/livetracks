@@ -7,6 +7,7 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 ### Changed
 
 - Updated CI and release actions to their current Node 24-compatible major versions, with automated patch updates and manual coordinated minor/major upgrades for the Android/Kotlin/native-audio toolchain.
+- Made English the default repository README and preserved the complete Spanish documentation in `README.es.md` with bidirectional language navigation.
 
 ## [0.2.0-alpha.1] - 2026-08-13
 

@@ -1,112 +1,116 @@
 # LiveTracks
 
 <p align="center">
+  <a href="README.md"><strong>English</strong></a> · <a href="README.es.md">Español</a>
+</p>
+
+<p align="center">
   <img src="assets/brand/livetracks-mark.png" alt="LiveTracks" width="160">
 </p>
 
 <p align="center">
-  <strong>Reproducción multipista profesional para shows en vivo, construida para Android.</strong><br>
-  Stems sincronizados, click por canción, timeline, consola y un modo de escenario pensado para operar entre temas.
+  <strong>Professional multitrack show playback built for Android.</strong><br>
+  Synchronized stems, per-song click, timeline editing, a mix console, and a focused Stage Mode for operating between songs.
 </p>
 
 <p align="center">
   <a href="https://github.com/thomrnowtea/livetracks/actions/workflows/android-ci.yml"><img alt="Android CI" src="https://github.com/thomrnowtea/livetracks/actions/workflows/android-ci.yml/badge.svg"></a>
   <a href="https://github.com/thomrnowtea/livetracks/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/thomrnowtea/livetracks?include_prereleases&label=release"></a>
   <img alt="Android 8+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white">
-  <img alt="Estado Alpha" src="https://img.shields.io/badge/status-alpha-D4AD5A">
+  <img alt="Alpha status" src="https://img.shields.io/badge/status-alpha-D4AD5A">
 </p>
 
 > [!IMPORTANT]
-> LiveTracks está en **alpha**. Ya puede probarse, pero todavía no debe considerarse validada para un show crítico sin ensayar previamente el teléfono, los archivos, el adaptador y el ruteo exactos que se usarán en vivo.
+> LiveTracks is currently **alpha software**. It is ready for testing, but it should not be trusted for a critical show until the exact phone, audio files, adapters, routing, and output hardware have been rehearsed together.
 
-## La idea
+## The concept
 
-Una sesión de LiveTracks mantiene una jerarquía simple:
+A LiveTracks session follows a straightforward hierarchy:
 
 ```text
-Proyecto / show
-├── Master del proyecto: volumen, paneo y defaults de metrónomo
+Project / show
+├── Project master: volume, pan, and metronome defaults
 └── Playlist
-    ├── Canción A: master y metrónomo propios
+    ├── Song A: independent master and metronome
     │   ├── Drums.wav
     │   ├── Bass.flac
-    │   ├── Click.wav  → referencia de click opcional
+    │   ├── Click.wav  → optional click reference
     │   └── Cues.wav
-    └── Canción B: master, tempo y stems independientes
+    └── Song B: independent master, tempo, and stems
 ```
 
-Cada canción es un contenedor sincronizado de stems. Todos parten del mismo reloj de audio; cada stem puede desplazarse con precisión de milisegundos, mezclarse y rutearse sin convertirse en un reproductor independiente que pueda derivar del resto.
+Each song is a synchronized container of stems. Every stem follows the same audio clock and can be positioned with millisecond precision, mixed, and routed without becoming an independent player that may drift away from the others.
 
-## Capturas
+## Screenshots
 
 <p align="center">
-  <img src="docs/images/timeline-landscape.png" alt="Timeline de LiveTracks en landscape" width="760">
+  <img src="docs/images/timeline-landscape.png" alt="LiveTracks timeline in landscape" width="760">
 </p>
 
 <p align="center">
-  <img src="docs/images/timeline-portrait.png" alt="Timeline de LiveTracks en portrait" width="320">
+  <img src="docs/images/timeline-portrait.png" alt="LiveTracks timeline in portrait" width="320">
   &nbsp;&nbsp;
-  <img src="docs/images/stage-mode.png" alt="Modo Escenario de LiveTracks" width="320">
+  <img src="docs/images/stage-mode.png" alt="LiveTracks Stage Mode" width="320">
 </p>
 
-## Funciones principales
+## Core features
 
-| Área | Capacidades |
+| Area | Capabilities |
 |---|---|
-| **Proyectos y playlist** | Múltiples shows, canciones reordenables, master de proyecto y master por canción, anterior/siguiente sin autoplay. |
-| **Timeline** | Ondas reales, zoom hasta 10 ms, playhead arrastrable, snapping, offsets, split no destructivo, extracción a una canción nueva y Undo/Redo de 50 pasos. |
-| **Metrónomo y estructura** | BPM y compás por canción, defaults heredables, grilla musical activable, stem de referencia de click y marcadores Intro/Verso/Estribillo/Puente/Solo. |
-| **Mezcla** | Fader, paneo, mute, solo, MAIN/MONITOR y medidores por stem; salida Single Mix o Stereo Split. |
-| **Operación en vivo** | Modo Escenario con playlist limpia y controles grandes de anterior, Play/Pause, Stop y siguiente. Pantalla activa y modo exclusivo opcionales. |
-| **Archivos** | WAV PCM/float nativo; MP3, AAC/M4A, FLAC y OGG mediante los codecs disponibles en Android; también admite stems vacíos con duración definida. |
-| **Distribución** | Releases firmadas, checksum SHA-256 y actualizador integrado con validación de versión, paquete, certificado y archivo. |
+| **Projects and playlist** | Multiple shows, reorderable songs, project and per-song masters, and safe Previous/Next navigation without autoplay. |
+| **Timeline** | Real waveforms, zoom down to 10 ms, draggable playhead, snapping, offsets, non-destructive split, extraction into a new song, and 50-step Undo/Redo. |
+| **Metronome and structure** | Per-song BPM and meter, inheritable defaults, optional musical grid, a click-reference stem, and Intro/Verse/Chorus/Bridge/Solo markers. |
+| **Mixing** | Per-stem fader, pan, mute, solo, MAIN/MONITOR sends, and meters; Single Mix and Stereo Split output modes. |
+| **Live operation** | A clean Stage Mode with large Previous, Play/Pause, Stop, and Next controls. Optional keep-screen-awake and exclusive performance settings. |
+| **Audio files** | Native PCM/float WAV; MP3, AAC/M4A, FLAC, and OGG through available Android codecs; empty stems with an explicit duration are also supported. |
+| **Distribution** | Signed releases, SHA-256 checksums, and an in-app updater that validates version, package, certificate, and file integrity. |
 
-La interfaz se adapta a portrait y landscape, está disponible en español e inglés y permite colapsar herramientas o paneles cuando el espacio de trabajo importa más que la edición.
+The interface adapts to portrait and landscape, is available in English and Spanish, and lets performers collapse tools or panels when workspace matters more than editing controls.
 
-## Flujo de trabajo
+## Typical workflow
 
-1. Crea un proyecto para el show.
-2. Agrega y ordena las canciones de la playlist.
-3. Importa los stems de cada canción o crea regiones vacías.
-4. Alinea entradas en la timeline, agrega marcadores y ajusta el metrónomo.
-5. Mezcla niveles, paneo, mute/solo y ruteo MAIN/MONITOR.
-6. Valida la salida física con el mismo hardware que usarás en vivo.
-7. Entra a Modo Escenario cuando la edición esté terminada.
+1. Create a project for the show.
+2. Add and order the songs in the playlist.
+3. Import each song's stems or create empty regions.
+4. Align entrances on the timeline, add section markers, and configure the metronome.
+5. Mix levels, pan, mute/solo, and MAIN/MONITOR routing.
+6. Validate the physical output with the exact hardware that will be used live.
+7. Enter Stage Mode once editing is complete.
 
-## Seguridad de audio
+## Audio safety
 
-El motor C++ usa una única salida Oboe como reloj master. El callback de tiempo real sólo mezcla buffers preasignados y consulta estado atómico: no decodifica, no accede a almacenamiento o red, no llama a JNI/UI y no espera locks.
+The C++ engine uses one Oboe output stream as its master clock. The realtime callback only mixes preallocated buffers and reads atomic state: it never decodes, accesses storage or the network, calls JNI/UI, or waits on locks.
 
-- Los stems `CLICK` y `CUE` nacen sin envío a MAIN.
-- Convertir un stem en referencia de click lo fuerza a MONITOR, silencia su MAIN y suspende el click sintetizado.
-- Un cambio de dispositivo durante la reproducción detiene la salida y exige revalidar la ruta.
-- Los cues de voz se sintetizan al editar y se reproducen desde audio prerenderizado.
-- Bluetooth se considera únicamente una opción de preescucha por su latencia y variabilidad.
+- `CLICK` and `CUE` stems are created without a MAIN send.
+- Designating a stem as the click reference forces it to MONITOR, silences its MAIN send, and suspends the synthesized click.
+- A physical route change during playback stops output and requires route revalidation.
+- Voice cues are synthesized while editing and played from prerendered audio.
+- Bluetooth is considered preview-only because of its latency and variable behavior.
 
-Consulta [Audio engine](docs/AUDIO_ENGINE.md) y [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md) antes de depender de la app en escenario.
+Read [Audio engine](docs/AUDIO_ENGINE.md) and [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md) before relying on the app on stage.
 
-## Descargar e instalar
+## Download and install
 
-La distribución oficial se realiza mediante [GitHub Releases](https://github.com/thomrnowtea/livetracks/releases):
+Official builds are distributed through [GitHub Releases](https://github.com/thomrnowtea/livetracks/releases):
 
-1. Descarga `LiveTracks.apk` desde la release elegida.
-2. Opcionalmente compara el archivo con `LiveTracks.apk.sha256`.
-3. Autoriza a Android a instalar desde esa fuente cuando lo solicite.
-4. Para futuras versiones usa **Ajustes → Acerca de → Buscar actualizaciones**.
+1. Download `LiveTracks.apk` from the selected release.
+2. Optionally compare it against `LiveTracks.apk.sha256`.
+3. Allow Android to install apps from that source when prompted.
+4. For future versions, use **Settings → About → Check for updates**.
 
-El actualizador no instala silenciosamente. Antes de abrir el instalador de Android valida HTTPS, metadata, versión, package id, SHA-256 y el mismo certificado de firma de la app instalada.
+The updater never installs silently. Before opening Android's package installer, it validates HTTPS metadata, version, package id, SHA-256, and the APK signing certificate against the installed app.
 
-## Estado actual y límites
+## Current status and limitations
 
-La versión alpha precarga cada archivo en memoria, con un máximo de 16 stems y 512 MB decodificados por archivo. El streaming por ring buffers, el servicio de reproducción foreground, la validación física de Stereo Split/USB, el autoavance y el Live Mode ampliado siguen pendientes.
+The alpha release preloads audio into memory, with a maximum of 16 stems and 512 MB of decoded data per file. Decoder-worker ring buffers, foreground playback service support, physical Stereo Split/USB validation, auto-advance, and an expanded Live Mode remain pending.
 
-La fuente de verdad sobre lo implementado es [Implementation status](docs/STATUS.md). Las afirmaciones de compatibilidad física viven en [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md); una prueba en emulador no se presenta como validación de escenario.
+[Implementation status](docs/STATUS.md) is the source of truth for completed and pending work. Physical compatibility claims belong in [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md); an emulator test is never presented as stage-hardware validation.
 
-## Desarrollo
+## Development
 
-Requisitos:
+Requirements:
 
-- Android Studio y JDK 17
+- Android Studio and JDK 17
 - Android SDK 35
 - Android NDK `27.0.12077973`
 - CMake `3.22.1`
@@ -117,27 +121,27 @@ $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-El proyecto separa `ui`, `domain`, `data`, `audio` y `cpp`; las dependencias apuntan hacia el dominio y el motor nativo nunca depende de UI o persistencia. Los builds verifican `arm64-v8a` y `x86_64`.
+The project separates `ui`, `domain`, `data`, `audio`, and `cpp`. Dependencies point toward the domain, and the native engine never depends on Android UI or persistence. Builds verify both `arm64-v8a` and `x86_64`.
 
-## Documentación
+## Documentation
 
-| Documento | Contenido |
+| Document | Contents |
 |---|---|
-| [Status](docs/STATUS.md) | Funciones terminadas, parciales, pendientes y bloqueadas por hardware. |
-| [Architecture](docs/ARCHITECTURE.md) | Capas, flujo de datos y límites entre Kotlin/JNI/C++. |
-| [Audio engine](docs/AUDIO_ENGINE.md) | Reloj, mezcla, ruteo y restricciones de tiempo real. |
-| [Testing](docs/TESTING.md) | Gates locales, matriz de emulador y secuencia física. |
-| [Releases](docs/RELEASES.md) | Versionado, firma, assets y contrato del actualizador. |
-| [Changelog](CHANGELOG.md) | Cambios por versión. |
+| [Status](docs/STATUS.md) | Completed, partial, pending, and hardware-blocked work. |
+| [Architecture](docs/ARCHITECTURE.md) | Layers, data flow, and Kotlin/JNI/C++ boundaries. |
+| [Audio engine](docs/AUDIO_ENGINE.md) | Clock, mixing, routing, and realtime constraints. |
+| [Testing](docs/TESTING.md) | Local gates, emulator matrix, and physical validation sequence. |
+| [Releases](docs/RELEASES.md) | Versioning, signing, assets, and updater contract. |
+| [Changelog](CHANGELOG.md) | Notable changes by version. |
 
-## Contribuir y reportar problemas
+## Contributing and reporting issues
 
-Las contribuciones y el feedback son bienvenidos. Antes de abrir un PR, lee [CONTRIBUTING.md](CONTRIBUTING.md) y ejecuta los gates locales. Para bugs, usa el [formulario de reporte](https://github.com/thomrnowtea/livetracks/issues/new?template=bug_report.yml); para propuestas, usa el [formulario de feature](https://github.com/thomrnowtea/livetracks/issues/new?template=feature_request.yml).
+Contributions and feedback are welcome. Before opening a PR, read [CONTRIBUTING.md](CONTRIBUTING.md) and run the local verification gates. Use the [bug report form](https://github.com/thomrnowtea/livetracks/issues/new?template=bug_report.yml) for defects and the [feature request form](https://github.com/thomrnowtea/livetracks/issues/new?template=feature_request.yml) for proposals.
 
-No publiques vulnerabilidades, credenciales, archivos de audio privados ni datos de dispositivos en un issue. Sigue [SECURITY.md](SECURITY.md) para reportes sensibles.
+Do not disclose vulnerabilities, credentials, private audio, or identifying device data in a public issue. Follow [SECURITY.md](SECURITY.md) for sensitive reports.
 
-## Créditos y licencia
+## Credits and license
 
-Creado y mantenido por [thomrnowtea](https://github.com/thomrnowtea). Las atribuciones de dependencias y tipografías están en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Created and maintained by [thomrnowtea](https://github.com/thomrnowtea). Dependency and font attributions are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-El repositorio es público para permitir su inspección y colaboración, pero actualmente **no concede una licencia general sobre el código fuente**. Hasta que exista un archivo `LICENSE`, se reservan los derechos aplicables; público no significa automáticamente open source.
+This repository is public for inspection and collaboration, but it currently **does not grant a general license to the source code**. Until a `LICENSE` file is added, applicable rights are reserved; public does not automatically mean open source.
