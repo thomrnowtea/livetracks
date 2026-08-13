@@ -796,6 +796,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setDefaultStemType(value: TrackType) = updateSettings { it.copy(defaultStemType = value) }
     fun setDefaultMonitorSendDb(value: Float) = updateSettings { it.copy(defaultMonitorSendDb = value.coerceIn(-60f, 0f)) }
     fun setOpenTimelineAfterImport(value: Boolean) = updateSettings { it.copy(openTimelineAfterImport = value) }
+    fun setTimelineSnapEnabled(value: Boolean) = updateSettings { it.copy(timelineSnapEnabled = value) }
     fun setAutomaticUpdateChecks(value: Boolean) = updateSettings { it.copy(automaticUpdateChecks = value) }
     fun setIncludePrereleaseUpdates(value: Boolean) {
         updateSettings { it.copy(includePrereleaseUpdates = value) }

@@ -4,6 +4,19 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+### Added
+
+- Added a persistent Timeline Snap switch: enabled drags land exactly on the visible 250/100/50/10 ms zoom unit; disabled drags remain frame-accurate and free.
+- Added a dedicated SVG Snap control and an explicit `FREE`/`LIBRE` scale state.
+
+### Changed
+
+- Reworked stem dragging around a continuous local preview with one persisted edit on release, avoiding the previous stepped, write-heavy gesture.
+- Kept zoom-out, zoom-in, and the current scale permanently visible in the Timeline toolbar in portrait and landscape.
+- Rebuilt click/tempo editing with project/custom source cards, a dominant BPM control, meter presets, safer click routing groups, and independent adaptive scrolling.
+- Added short restrained transitions to collapsible Timeline, Playlist, Master, and Settings surfaces and corrected cramped portrait/landscape dialogs.
+- Gave debug builds a separate application id and label so emulator QA can coexist with a signed LiveTracks release installation.
+
 ## [0.2.0-alpha.2] - 2026-08-13
 
 ### Added

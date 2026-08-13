@@ -17,9 +17,11 @@ Use an API 31 or newer emulator for navigation, state restoration, persistence, 
 
 Run every edited workspace once in portrait and once in landscape with system autorotation enabled; the manifest must not lock either orientation. For timeline changes, verify beat density at overview and millisecond zoom, marker drag/edit/delete, voice render success/failure state, split then extract, and Undo/Redo across the newly inserted master. Load at least two masters backed by real WAV files: verify visible envelopes, immediate audible output, previous/next availability at playlist boundaries, and that a skip stops and arms without autoplay before the second master is played. Grant and revoke Notification Policy access and confirm exclusive mode never prevents playback, restores the prior policy on Pause/Stop/Panic, and leaves media output audible.
 
+Keep Timeline zoom-out, zoom-in, and the current scale visible in both orientations. With Snap enabled, drag at every zoom step and assert the persisted frame offset is an exact multiple of that displayed unit. Disable Snap, perform a deliberately off-grid drag, confirm the toolbar reads `FREE`/`LIBRE`, and verify the exact offset and preference survive relaunch. A free drag must not show a magnetic guide.
+
 For Stage Mode, verify the Playlist preparation header collapses/restores and retains that state after entering and leaving the full-screen view. In portrait and landscape, confirm every cue remains readable, all four transport targets remain visible, selecting a row only arms it, Previous/Next stop before arming, Stop resets to zero, Play is explicit, Android Back returns to editing, and no edit/navigation controls leak into the performance view.
 
-For the signed updater path, start from an older release-signed APK. Test stable and pre-release filtering, interrupted-download recovery, a valid upgrade, and deliberately altered metadata/checksum/package/signature. A debug APK has a different certificate and must reject a release APK; that rejection is expected, not an updater failure.
+For the signed updater path, start from an older release-signed APK. Test stable and pre-release filtering, interrupted-download recovery, a valid upgrade, and deliberately altered metadata/checksum/package/signature. Debug builds use the separate `com.thomrnowtea.livetracks.debug` application id and certificate so they can coexist with a release installation; they must reject a release APK, and that rejection is expected rather than an updater failure.
 
 ## Recorded release checks
 

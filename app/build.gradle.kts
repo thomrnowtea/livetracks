@@ -44,8 +44,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "LiveTracks Debug")
+        }
         release {
             isMinifyEnabled = false
+            resValue("string", "app_name", "LiveTracks")
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

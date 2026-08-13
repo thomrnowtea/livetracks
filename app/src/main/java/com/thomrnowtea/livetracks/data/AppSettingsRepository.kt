@@ -13,6 +13,7 @@ data class AppSettings(
     val defaultStemType: TrackType = TrackType.MUSIC,
     val defaultMonitorSendDb: Float = -6f,
     val openTimelineAfterImport: Boolean = true,
+    val timelineSnapEnabled: Boolean = true,
     val automaticUpdateChecks: Boolean = true,
     val includePrereleaseUpdates: Boolean = true,
 )
@@ -33,6 +34,7 @@ class SharedPreferencesAppSettingsRepository(context: Context) : AppSettingsRepo
         defaultStemType = enumValueOrDefault(preferences.getString("default_stem_type", null), TrackType.MUSIC),
         defaultMonitorSendDb = preferences.getFloat("default_monitor_send_db", -6f).coerceIn(-60f, 0f),
         openTimelineAfterImport = preferences.getBoolean("open_timeline_after_import", true),
+        timelineSnapEnabled = preferences.getBoolean("timeline_snap_enabled", true),
         automaticUpdateChecks = preferences.getBoolean("automatic_update_checks", true),
         includePrereleaseUpdates = preferences.getBoolean("include_prerelease_updates", true),
     )
@@ -46,6 +48,7 @@ class SharedPreferencesAppSettingsRepository(context: Context) : AppSettingsRepo
             .putString("default_stem_type", value.defaultStemType.name)
             .putFloat("default_monitor_send_db", value.defaultMonitorSendDb)
             .putBoolean("open_timeline_after_import", value.openTimelineAfterImport)
+            .putBoolean("timeline_snap_enabled", value.timelineSnapEnabled)
             .putBoolean("automatic_update_checks", value.automaticUpdateChecks)
             .putBoolean("include_prerelease_updates", value.includePrereleaseUpdates)
             .apply()
