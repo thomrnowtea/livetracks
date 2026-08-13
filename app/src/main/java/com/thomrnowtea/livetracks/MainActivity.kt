@@ -227,6 +227,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
         viewModel.refreshProfessionalModeAccess()
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { viewModel.importTracks(it) }
+    val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(viewModel::replaceSelectedTrack) }
     val view = LocalView.current
     SideEffect { view.keepScreenOn = state.settings.keepScreenAwake }
     MaterialTheme(colorScheme = ConsoleColors, typography = DawTypography) {
@@ -248,7 +249,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                     SideNavigation(state.workspace, viewModel::setWorkspace)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         CompactContextBar(state, viewModel)
-                        WorkspaceContent(state, viewModel, addAudio, Modifier.weight(1f))
+                        WorkspaceContent(state, viewModel, addAudio, { replacePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }, Modifier.weight(1f))
                         if (state.workspace != Workspace.SETTINGS) CompactTransport(
                             state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
                             viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
@@ -259,7 +260,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                     }
                 } else Column(Modifier.fillMaxSize()) {
                     CompactContextBar(state, viewModel)
-                    WorkspaceContent(state, viewModel, addAudio, Modifier.weight(1f))
+                    WorkspaceContent(state, viewModel, addAudio, { replacePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }, Modifier.weight(1f))
                     if (state.workspace != Workspace.SETTINGS) CompactTransport(
                         state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
                         viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
@@ -276,7 +277,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, modifier: Modifier = Modifier) {
+private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, replaceAudio: () -> Unit, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().clipToBounds().padding(horizontal = 12.dp, vertical = 8.dp)) {
         AnimatedContent(
             targetState = state.workspace,
@@ -290,7 +291,7 @@ private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: ()
             when (workspace) {
                 Workspace.PROJECTS -> ProjectsScreen(state, vm)
                 Workspace.PLAYLIST -> PlaylistScreen(state, vm)
-                Workspace.TRACK -> TrackScreen(state, vm, addAudio)
+                Workspace.TRACK -> TrackScreen(state, vm, addAudio, replaceAudio)
                 Workspace.METRONOME -> MetronomeScreen(state, vm)
                 Workspace.SETTINGS -> SettingsScreen(state, vm)
             }
@@ -803,7 +804,7 @@ private fun ConsoleReadout(label: String, value: String, color: Color) {
 }
 
 @Composable
-private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit) {
+private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, replaceAudio: () -> Unit) {
     var showStemOptions by remember { mutableStateOf(false) }
     var showEmptyStemDialog by remember { mutableStateOf(false) }
     val master = state.selectedMaster()
@@ -825,7 +826,7 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
         label = "trackWorkspace",
     ) { workspace ->
         when (workspace) {
-            TrackWorkspace.TIMELINE -> TimelineEditor(state, vm) { showStemOptions = true }
+            TrackWorkspace.TIMELINE -> TimelineEditor(state, vm, replaceAudio) { showStemOptions = true }
             TrackWorkspace.MIXER -> MixerConsole(state.tracks, vm)
         }
     }
@@ -845,7 +846,7 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
 }
 
 @Composable
-private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () -> Unit) {
+private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: () -> Unit, addStem: () -> Unit) {
     if (state.tracks.isEmpty()) {
         ConsolePanel(Modifier.fillMaxSize()) {
             EmptyState(
@@ -1086,7 +1087,7 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, addStem: () ->
                         LazyColumn(Modifier.weight(1f)) {
                             itemsIndexed(state.tracks, key = { _, it -> it.id }) { index, track ->
                                 Row(Modifier.fillMaxWidth().height(68.dp)) {
-                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded) {
+                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded, replaceAudio) {
                                         vm.selectTimelineTrack(track.id)
                                     }
                                     TimelineLaneViewport(
@@ -1346,8 +1347,8 @@ private fun DrawScope.drawBeatLines(
 }
 
 @Composable
-private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, select: () -> Unit) {
-    Surface(onClick = select, modifier = Modifier.width(width).fillMaxHeight(),
+private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, replace: () -> Unit, select: () -> Unit) {
+    Surface(modifier = Modifier.width(width).fillMaxHeight().combinedClickable(onClick = select, onDoubleClick = replace),
         color = if (selected) Raised else if (index % 2 == 0) Panel else Color(0xFF191B1D)) {
         Row(Modifier.fillMaxSize().padding(horizontal = if (compact) 5.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (compact) {

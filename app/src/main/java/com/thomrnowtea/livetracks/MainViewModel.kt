@@ -376,6 +376,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         analyzeTracks(selectedMasterTrack())
     }
 
+    fun replaceSelectedTrack(uri: Uri) {
+        val selectedId = _state.value.selectedTimelineTrackId ?: return
+        val master = selectedMasterTrack() ?: return
+        val existing = master.tracks.firstOrNull { it.id == selectedId } ?: return
+        runCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        } ?: uri.lastPathSegment ?: existing.name
+        recordTimelineEdit()
+        updateSelectedMaster { current ->
+            current.copy(tracks = current.tracks.map { track ->
+                if (track.id != selectedId) track else track.copy(name = name, sourceUri = uri.toString(), sourceMetadata = null)
+            })
+        }
+        existing.sourceUri?.let(analysisCache::remove)
+        _state.update { it.copy(message = uiText("Audio del stem reemplazado", "Stem audio replaced")) }
+        invalidateAudio()
+        saveNow()
+        analyzeTracks(selectedMasterTrack())
+    }
+
     fun createEmptyTrack(name: String, durationSeconds: Double) {
         val master = selectedMasterTrack() ?: return
         if (master.tracks.size >= 16) {
