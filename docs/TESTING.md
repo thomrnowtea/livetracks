@@ -6,10 +6,10 @@
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
 ./gradlew testDebugUnitTest
 ./gradlew lintDebug
-./gradlew assembleDebug
+./gradlew verifyDebugApkAbis
 ```
 
-Unit tests cover decibel conversion, pan-law endpoints/center, MAIN downmix headroom, click/cue routing defaults, click-reference safety, beat/bar spacing, duration selection, safe metronome defaults, schema migration/rejection through v6, marker/grid/reference persistence, non-destructive splits, independent-master extraction, marker lead timing, real PCM waveform analysis, and update version-code policy. A successful build verifies Kotlin/JNI/CMake linkage; it does not verify audible output.
+Unit tests cover decibel conversion, pan-law endpoints/center, MAIN downmix headroom, click/cue routing defaults, click-reference safety, beat/bar spacing, duration selection, safe metronome defaults, schema migration/rejection through v6, marker/grid/reference persistence, non-destructive splits, independent-master extraction, marker lead timing, real PCM waveform analysis, and update version-code policy. The ABI gate checks that `liblivetracks_audio.so`, `liboboe.so`, and `libc++_shared.so` are packaged for `armeabi-v7a`, `arm64-v8a`, and `x86_64`. A successful build verifies Kotlin/JNI/CMake linkage; it does not verify audible output.
 
 ## Emulator
 
@@ -36,11 +36,13 @@ The physical device model is deliberately omitted because this check validates r
 3. USB interface: compare reported channels with actual opened channels before enabling multichannel.
 4. While rendering, unplug USB: output must stop, state must become UNSAFE, and no click may continue on speaker.
 5. Run 5, 30, and 60-minute WAV sessions at 2/4/8 stems; record xruns, memory, temperature, and failures. Extend to 16 only if stable.
+6. On a 32-bit ARM target, confirm `armeabi-v7a` appears in `ro.product.cpu.abilist`, begin with one short WAV, and record process-memory pressure before increasing stem count or duration.
 
 Useful collection commands:
 
 ```text
 adb shell getprop ro.build.version.release
+adb shell getprop ro.product.cpu.abilist
 adb shell dumpsys media.audio_flinger
 adb logcat --pid=$(adb shell pidof com.thomrnowtea.livetracks)
 adb shell dumpsys package com.thomrnowtea.livetracks

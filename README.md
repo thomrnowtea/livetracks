@@ -102,7 +102,9 @@ The updater never installs silently. Before opening Android's package installer,
 
 ## Current status and limitations
 
-The alpha release preloads audio into memory, with a maximum of 16 stems and 512 MB of decoded data per file. Decoder-worker ring buffers, foreground playback service support, physical Stereo Split/USB validation, auto-advance, and an expanded Live Mode remain pending.
+Official APKs include 32-bit ARM (`armeabi-v7a`), 64-bit ARM (`arm64-v8a`), and emulator (`x86_64`) native code. Packaging support allows installation on those CPU families but is not a physical audio-hardware certification.
+
+The alpha release preloads audio into memory, with a maximum of 16 stems and 512 MB of decoded data per file. The smaller address space and memory budgets of many 32-bit devices make short, conservative test assets especially important. Decoder-worker ring buffers, foreground playback service support, physical Stereo Split/USB validation, auto-advance, and an expanded Live Mode remain pending.
 
 [Implementation status](docs/STATUS.md) is the source of truth for completed and pending work. Physical compatibility claims belong in [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md); an emulator test is never presented as stage-hardware validation.
 
@@ -117,11 +119,11 @@ Requirements:
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew testDebugUnitTest lintDebug verifyDebugApkAbis
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The project separates `ui`, `domain`, `data`, `audio`, and `cpp`. Dependencies point toward the domain, and the native engine never depends on Android UI or persistence. Builds verify both `arm64-v8a` and `x86_64`.
+The project separates `ui`, `domain`, `data`, `audio`, and `cpp`. Dependencies point toward the domain, and the native engine never depends on Android UI or persistence. Builds verify `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
 
 ## Documentation
 
