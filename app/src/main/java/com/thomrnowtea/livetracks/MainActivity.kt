@@ -24,6 +24,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.Orientation
@@ -227,7 +228,12 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
         viewModel.refreshProfessionalModeAccess()
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { viewModel.importTracks(it) }
-    val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(viewModel::replaceSelectedTrack) }
+    var replacementTrackId by rememberSaveable { mutableStateOf<String?>(null) }
+    val replacePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val trackId = replacementTrackId
+        replacementTrackId = null
+        if (uri != null && trackId != null) viewModel.replaceTrack(trackId, uri)
+    }
     val view = LocalView.current
     SideEffect { view.keepScreenOn = state.settings.keepScreenAwake }
     MaterialTheme(colorScheme = ConsoleColors, typography = DawTypography) {
@@ -249,7 +255,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                     SideNavigation(state.workspace, viewModel::setWorkspace)
                     Column(Modifier.weight(1f).fillMaxHeight()) {
                         CompactContextBar(state, viewModel)
-                        WorkspaceContent(state, viewModel, addAudio, { replacePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }, Modifier.weight(1f))
+                        WorkspaceContent(state, viewModel, addAudio, { id -> replacementTrackId = id; replacePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }, Modifier.weight(1f))
                         if (state.workspace != Workspace.SETTINGS) CompactTransport(
                             state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
                             viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
@@ -260,7 +266,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                     }
                 } else Column(Modifier.fillMaxSize()) {
                     CompactContextBar(state, viewModel)
-                    WorkspaceContent(state, viewModel, addAudio, { replacePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }, Modifier.weight(1f))
+                    WorkspaceContent(state, viewModel, addAudio, { id -> replacementTrackId = id; replacePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*")) }, Modifier.weight(1f))
                     if (state.workspace != Workspace.SETTINGS) CompactTransport(
                         state, viewModel::skipToPreviousMasterTrack, viewModel::playPause, viewModel::stop,
                         viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
@@ -277,7 +283,7 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
 }
 
 @Composable
-private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, replaceAudio: () -> Unit, modifier: Modifier = Modifier) {
+private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, replaceAudio: (String) -> Unit, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().clipToBounds().padding(horizontal = 12.dp, vertical = 8.dp)) {
         AnimatedContent(
             targetState = state.workspace,
@@ -804,7 +810,7 @@ private fun ConsoleReadout(label: String, value: String, color: Color) {
 }
 
 @Composable
-private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, replaceAudio: () -> Unit) {
+private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> Unit, replaceAudio: (String) -> Unit) {
     var showStemOptions by remember { mutableStateOf(false) }
     var showEmptyStemDialog by remember { mutableStateOf(false) }
     val master = state.selectedMaster()
@@ -846,7 +852,7 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
 }
 
 @Composable
-private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: () -> Unit, addStem: () -> Unit) {
+private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: (String) -> Unit, addStem: () -> Unit) {
     if (state.tracks.isEmpty()) {
         ConsolePanel(Modifier.fillMaxSize()) {
             EmptyState(
@@ -889,8 +895,11 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
         val end = track.startOffsetFrames + (track.durationSeconds * TIMELINE_SAMPLE_RATE).roundToLong()
         state.timelineCursorFrames > track.startOffsetFrames && state.timelineCursorFrames < end
     } == true
-    var localCursorFrames by remember { mutableLongStateOf(state.timelineCursorFrames) }
-    LaunchedEffect(state.timelineCursorFrames) { localCursorFrames = state.timelineCursorFrames }
+    var localCursorFrames by remember(masterId) { mutableLongStateOf(state.timelineCursorFrames) }
+    var cursorDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(state.timelineCursorFrames) {
+        if (!cursorDragging) localCursorFrames = state.timelineCursorFrames
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val editorWidth = maxWidth
@@ -1087,7 +1096,7 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
                         LazyColumn(Modifier.weight(1f)) {
                             itemsIndexed(state.tracks, key = { _, it -> it.id }) { index, track ->
                                 Row(Modifier.fillMaxWidth().height(68.dp)) {
-                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded, replaceAudio) {
+                                    TimelineLaneHeader(track, index, track.id == state.selectedTimelineTrackId, labelWidth, !labelPanelExpanded, replaceAudio, { from, to -> vm.moveTrack(from, to) }) {
                                         vm.selectTimelineTrack(track.id)
                                     }
                                     TimelineLaneViewport(
@@ -1146,7 +1155,11 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
                             Modifier.offset { IntOffset((cursorX - with(density) { 20.dp.toPx() }).roundToInt(), 0) }
                                 .size(width = 40.dp, height = 76.dp)
                                 .pointerInput(pxPerSecond, maxSeconds) {
-                                    detectDragGestures { change, amount ->
+                                    detectDragGestures(
+                                        onDragStart = { cursorDragging = true },
+                                        onDragEnd = { cursorDragging = false },
+                                        onDragCancel = { cursorDragging = false },
+                                    ) { change, amount ->
                                         change.consume()
                                         val deltaFrames = (amount.x / pxPerSecond * TIMELINE_SAMPLE_RATE).roundToLong()
                                         val oneMillisecond = TIMELINE_SAMPLE_RATE / 1_000L
@@ -1347,8 +1360,24 @@ private fun DrawScope.drawBeatLines(
 }
 
 @Composable
-private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, replace: () -> Unit, select: () -> Unit) {
-    Surface(modifier = Modifier.width(width).fillMaxHeight().combinedClickable(onClick = select, onDoubleClick = replace),
+private fun TimelineLaneHeader(track: MixerTrackUi, index: Int, selected: Boolean, width: androidx.compose.ui.unit.Dp, compact: Boolean, replace: (String) -> Unit, move: (String, Int) -> Unit, select: () -> Unit) {
+    var dragDistance by remember(track.id) { mutableFloatStateOf(0f) }
+    Surface(modifier = Modifier.width(width).fillMaxHeight()
+        .pointerInput(track.id) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { dragDistance = 0f },
+                onDragEnd = {
+                    val delta = (dragDistance / 68.dp.toPx()).roundToInt()
+                    if (delta != 0) move(track.id, (index + delta).coerceAtLeast(0))
+                    dragDistance = 0f
+                },
+                onDragCancel = { dragDistance = 0f },
+            ) { change, amount ->
+                change.consume()
+                dragDistance += amount.y
+            }
+        }
+        .combinedClickable(onClick = select, onDoubleClick = { replace(track.id) }),
         color = if (selected) Raised else if (index % 2 == 0) Panel else Color(0xFF191B1D)) {
         Row(Modifier.fillMaxSize().padding(horizontal = if (compact) 5.dp else 10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (compact) {

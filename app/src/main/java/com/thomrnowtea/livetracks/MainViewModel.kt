@@ -376,8 +376,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         analyzeTracks(selectedMasterTrack())
     }
 
-    fun replaceSelectedTrack(uri: Uri) {
-        val selectedId = _state.value.selectedTimelineTrackId ?: return
+    fun replaceTrack(trackId: String, uri: Uri) {
+        val selectedId = trackId
         val master = selectedMasterTrack() ?: return
         val existing = master.tracks.firstOrNull { it.id == selectedId } ?: return
         runCatching { resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -441,6 +441,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectTimelineTrack(trackId: String) {
         if (_state.value.tracks.any { it.id == trackId }) _state.update { it.copy(selectedTimelineTrackId = trackId) }
+    }
+
+    fun moveTrack(trackId: String, targetIndex: Int) {
+        val master = selectedMasterTrack() ?: return
+        val fromIndex = master.tracks.indexOfFirst { it.id == trackId }
+        if (fromIndex < 0) return
+        val destination = targetIndex.coerceIn(0, master.tracks.lastIndex)
+        if (fromIndex == destination) return
+        recordTimelineEdit()
+        updateSelectedMaster { current ->
+            val reordered = current.tracks.toMutableList().apply {
+                add(destination, removeAt(fromIndex))
+            }
+            current.copy(tracks = reordered)
+        }
+        saveNow()
     }
 
     fun cycleTrackType(trackId: String) {
