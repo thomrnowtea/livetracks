@@ -1607,7 +1607,7 @@ private fun MasterScreen(state: MainUiState, vm: MainViewModel) {
         if (landscape) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 MasterSectionContent(section, project, master, state, vm, Modifier.weight(1f).fillMaxHeight())
-                MasterSectionRail(section, { section = it }, Modifier.width(52.dp).fillMaxHeight())
+                MasterSectionRail(section, { section = it }, Modifier.width(60.dp).fillMaxHeight())
             }
         } else {
             Column(Modifier.fillMaxSize()) {
@@ -1625,13 +1625,15 @@ private fun MasterSectionStrip(
     select: (MasterSection) -> Unit,
     modifier: Modifier,
 ) {
-    Row(
-        modifier.height(44.dp).background(Panel, RoundedCornerShape(9.dp)).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        MasterSection.entries.forEach { item ->
-            MasterSectionButton(item, section == item, Modifier.size(44.dp)) { select(item) }
+    Surface(modifier.height(52.dp), color = Panel, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border.copy(alpha = .55f))) {
+        Row(Modifier.fillMaxSize().padding(3.dp)) {
+            MasterSection.entries.forEach { item ->
+                MasterSectionButton(
+                    item,
+                    section == item,
+                    Modifier.weight(1f).fillMaxHeight().padding(3.dp),
+                ) { select(item) }
+            }
         }
     }
 }
@@ -1643,13 +1645,13 @@ private fun MasterSectionRail(
     modifier: Modifier,
 ) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border.copy(alpha = .55f))) {
-        Column(
-            Modifier.fillMaxSize().padding(vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
+        Column(Modifier.fillMaxSize().padding(3.dp)) {
             MasterSection.entries.forEach { item ->
-                MasterSectionButton(item, section == item, Modifier.size(44.dp)) { select(item) }
+                MasterSectionButton(
+                    item,
+                    section == item,
+                    Modifier.weight(1f).fillMaxWidth().padding(3.dp),
+                ) { select(item) }
             }
         }
     }
@@ -1714,27 +1716,37 @@ private fun MasterSection.title() = when (this) {
 
 @Composable
 private fun ProjectMasterPanel(project: Project, vm: MainViewModel) {
+    val summaryRows = listOf(
+        tr("Canciones", "Songs") to project.playlist.size.toString(),
+        tr("Stems", "Stems") to project.playlist.sumOf { it.tracks.size }.toString(),
+        tr("Plantilla de click", "Click template") to
+            "${formatBpm(project.defaultMetronome.bpm)} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}",
+    )
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth < 600.dp) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ProjectOutputModule(project, vm, Modifier.fillMaxWidth().height(220.dp))
-                ConsolePanel(Modifier.fillMaxWidth().height(180.dp), padding = 16.dp) {
-                    Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
-                    SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
-                    SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
-                }
+                MasterOutputModule(
+                    title = tr("SALIDA DEL SHOW", "SHOW OUTPUT"),
+                    gainDb = project.masterGainDb,
+                    pan = project.masterPan,
+                    setGain = vm::setProjectGain,
+                    setPan = vm::setProjectPan,
+                    footer = tr("Afecta toda la playlist", "Controls the entire setlist"),
+                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                )
+                MasterSummaryModule(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"), summaryRows, Modifier.fillMaxWidth().height(220.dp))
             }
         } else Row(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ProjectOutputModule(project, vm, Modifier.width(400.dp).fillMaxHeight())
-            ConsolePanel(Modifier.weight(1f).fillMaxHeight(), padding = 0.dp) {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
-                    Eyebrow(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"))
-                    Spacer(Modifier.height(12.dp))
-                    SummaryLine(tr("Canciones", "Songs"), project.playlist.size.toString())
-                    SummaryLine(tr("Stems", "Stems"), project.playlist.sumOf { it.tracks.size }.toString())
-                    SummaryLine(tr("Plantilla de click", "Click template"), "${formatBpm(project.defaultMetronome.bpm)} BPM · ${project.defaultMetronome.numerator}/${project.defaultMetronome.denominator}")
-                }
-            }
+            MasterOutputModule(
+                title = tr("SALIDA DEL SHOW", "SHOW OUTPUT"),
+                gainDb = project.masterGainDb,
+                pan = project.masterPan,
+                setGain = vm::setProjectGain,
+                setPan = vm::setProjectPan,
+                footer = tr("Afecta toda la playlist", "Controls the entire setlist"),
+                modifier = Modifier.width(400.dp).fillMaxHeight(),
+            )
+            MasterSummaryModule(tr("RESUMEN DEL SHOW", "SHOW SUMMARY"), summaryRows, Modifier.weight(1f).fillMaxHeight())
         }
     }
 }
@@ -1892,18 +1904,45 @@ private fun MetronomeWorkspaceRail(
 }
 
 @Composable
-private fun ProjectOutputModule(project: Project, vm: MainViewModel, modifier: Modifier) {
-    Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
+private fun MasterOutputModule(
+    title: String,
+    gainDb: Float,
+    pan: Float,
+    setGain: (Float) -> Unit,
+    setPan: (Float) -> Unit,
+    footer: String,
+    modifier: Modifier,
+) {
+    ConsolePanel(modifier, padding = 0.dp) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(tr("SALIDA DEL SHOW", "SHOW OUTPUT"), color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Black)
+            Eyebrow(title)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                KnobControl("VOLUME", project.masterGainDb, -60f..6f, vm::setProjectGain, Mint, formatDb(project.masterGainDb), 92.dp)
-                KnobControl("PAN", project.masterPan, -1f..1f, vm::setProjectPan, Amber, panLabel(project.masterPan), 76.dp)
+                KnobControl("VOLUME", gainDb, -60f..6f, setGain, Mint, formatDb(gainDb), 92.dp)
+                KnobControl("PAN", pan, -1f..1f, setPan, Amber, panLabel(pan), 76.dp)
             }
-            Text(tr("Afecta toda la playlist", "Controls the entire setlist"), color = TextMuted, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Text(footer, color = TextMuted, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun MasterSummaryModule(
+    title: String,
+    rows: List<Pair<String, String>>,
+    modifier: Modifier,
+    action: (@Composable () -> Unit)? = null,
+) {
+    ConsolePanel(modifier, padding = 0.dp) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { Eyebrow(title) }
+                action?.invoke()
+            }
+            Spacer(Modifier.height(8.dp))
+            rows.forEach { (label, value) -> SummaryLine(label, value) }
         }
     }
 }
@@ -1940,41 +1979,47 @@ private fun MasterTrackPanel(master: MasterTrack?, vm: MainViewModel) {
         tr("Selecciona una pista de la playlist.", "Select a track from the playlist."),
         tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
     ) { vm.setWorkspace(Workspace.PLAYLIST) }; return }
+    val summaryRows = listOf(
+        tr("Stems", "Stems") to master.tracks.size.toString(),
+        tr("Duración", "Duration") to timeText(master.durationSeconds()),
+        tr("Última entrada", "Last entry") to
+            timeText(master.tracks.maxOfOrNull { it.startOffsetFrames.toDouble() / TIMELINE_SAMPLE_RATE } ?: 0.0),
+    )
+    val output: @Composable (Modifier) -> Unit = { modifier ->
+        MasterOutputModule(
+            title = tr("SALIDA DE CANCIÓN", "SONG OUTPUT") + " · ${master.name}",
+            gainDb = master.gainDb,
+            pan = master.pan,
+            setGain = vm::setMasterGain,
+            setPan = vm::setMasterPan,
+            footer = tr("Afecta todos los stems de esta canción", "Controls every stem in this song"),
+            modifier = modifier,
+        )
+    }
+    val summary: @Composable (Modifier) -> Unit = { modifier ->
+        MasterSummaryModule(
+            title = tr("RESUMEN DE SEÑAL", "SIGNAL SUMMARY"),
+            rows = summaryRows,
+            modifier = modifier,
+            action = {
+                DawIconButton(
+                    DawIcon.MIXER,
+                    tr("Abrir consola de mezcla", "Open mix console"),
+                ) { vm.setWorkspace(Workspace.TRACK); vm.setTrackWorkspace(TrackWorkspace.MIXER) }
+            },
+        )
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = maxWidth < 600.dp
-        val output: @Composable (Modifier) -> Unit = { modifier ->
-            Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(tr("SALIDA DE CANCIÓN", "SONG OUTPUT") + " · ${master.name}", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                    Spacer(Modifier.weight(1f))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        KnobControl("VOLUME", master.gainDb, -60f..6f, vm::setMasterGain, Mint, formatDb(master.gainDb), 92.dp)
-                        KnobControl("PAN", master.pan, -1f..1f, vm::setMasterPan, Amber, panLabel(master.pan), 76.dp)
-                    }
-                    Spacer(Modifier.weight(1f))
-                }
+        if (maxWidth < 600.dp) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                output(Modifier.fillMaxWidth().height(220.dp))
+                summary(Modifier.fillMaxWidth().height(220.dp))
             }
-        }
-        val summary: @Composable (Modifier) -> Unit = { modifier ->
-            Surface(modifier, color = Panel, shape = RoundedCornerShape(8.dp)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(tr("RESUMEN DE SEÑAL", "SIGNAL SUMMARY"), color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Black)
-                    SummaryLine("Stems", master.tracks.size.toString()); SummaryLine(tr("Duración", "Duration"), timeText(master.durationSeconds()))
-                    SummaryLine(tr("Última entrada", "Last entry"), timeText(master.tracks.maxOfOrNull { it.startOffsetFrames.toDouble() / TIMELINE_SAMPLE_RATE } ?: 0.0))
-                    Spacer(Modifier.weight(1f))
-                    DawIconButton(
-                        DawIcon.MIXER,
-                        tr("Abrir consola de mezcla", "Open mix console"),
-                        selected = true,
-                        modifier = Modifier.align(Alignment.End),
-                    ) { vm.setWorkspace(Workspace.TRACK); vm.setTrackWorkspace(TrackWorkspace.MIXER) }
-                }
+        } else {
+            Row(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                output(Modifier.width(400.dp).fillMaxHeight())
+                summary(Modifier.weight(1f).fillMaxHeight())
             }
-        }
-        if (compact) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            output(Modifier.fillMaxWidth().height(260.dp)); summary(Modifier.fillMaxWidth().height(220.dp))
-        } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            output(Modifier.width(380.dp).fillMaxHeight()); summary(Modifier.weight(1f).fillMaxHeight())
         }
     }
 }
@@ -2398,16 +2443,58 @@ private fun MetronomeStepButton(
 
 @Composable
 private fun RoutingPanel(state: MainUiState, vm: MainViewModel) {
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.weight(1f))
-            RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated on monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.weight(1f))
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxWidth < 600.dp
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (compact) {
+                RouteCard(
+                    "SINGLE MIX",
+                    "MAIN L/R",
+                    tr("Mezcla estéreo principal", "Main stereo mix"),
+                    !state.stereoSplit,
+                    { vm.setStereoSplit(false) },
+                    Modifier.fillMaxWidth().height(148.dp),
+                )
+                RouteCard(
+                    "STEREO SPLIT",
+                    "L MAIN · R MON",
+                    tr("Click aislado en monitor", "Click isolated on monitor"),
+                    state.stereoSplit,
+                    { vm.setStereoSplit(true) },
+                    Modifier.fillMaxWidth().height(148.dp),
+                )
+            } else {
+                Row(Modifier.fillMaxWidth().height(168.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.weight(1f))
+                    RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated on monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.weight(1f))
+                }
+            }
+            RoutingHardwareModule(state, vm, Modifier.fillMaxWidth().height(if (compact) 104.dp else 84.dp))
         }
-        Spacer(Modifier.height(6.dp))
-        Surface(Modifier.fillMaxWidth().height(68.dp), color = Panel, shape = RoundedCornerShape(8.dp)) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Eyebrow(tr("HARDWARE ACTUAL", "CURRENT HARDWARE")); Text(state.devices.joinToString { it.name }.ifBlank { tr("Salida Android", "Android output") }, fontWeight = FontWeight.Bold); Text("${state.diagnostics.actualSampleRate.takeIf { it > 0 } ?: 0} Hz · ${state.diagnostics.actualChannels} ${tr("canales", "channels")} · XRuns ${state.diagnostics.xRuns}", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 10.sp) }
-                Button(onClick = vm::panic, colors = ButtonDefaults.buttonColors(containerColor = Red, contentColor = Color.White), shape = RoundedCornerShape(8.dp)) { Text("MUTE ALL", fontWeight = FontWeight.Black) }
+    }
+}
+
+@Composable
+private fun RoutingHardwareModule(state: MainUiState, vm: MainViewModel, modifier: Modifier) {
+    ConsolePanel(modifier, padding = 0.dp) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Eyebrow(tr("HARDWARE ACTUAL", "CURRENT HARDWARE"))
+                Text(state.devices.joinToString { it.name }.ifBlank { tr("Salida Android", "Android output") }, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${state.diagnostics.actualSampleRate.takeIf { it > 0 } ?: 0} Hz · ${state.diagnostics.actualChannels} ${tr("canales", "channels")} · XRuns ${state.diagnostics.xRuns}",
+                    color = TextMuted,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Button(onClick = vm::panic, colors = ButtonDefaults.buttonColors(containerColor = Red, contentColor = Color.White), shape = RoundedCornerShape(8.dp)) {
+                Text("MUTE ALL", fontWeight = FontWeight.Black)
             }
         }
     }
