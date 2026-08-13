@@ -31,12 +31,13 @@ Last updated: 2026-08-13
 - Android MediaCodec preprocessing for device-supported MP3, AAC/M4A, FLAC and OGG sources; conversion occurs before playback and never in the realtime callback.
 - Two-stage master configuration: project volume/pan plus selected playlist-item volume/pan.
 - Per-master-track transport-locked metronome with an inheritable project template. A single persisted stem may replace the native click; designation converts it to CLICK, forces MAIN to negative infinity, and keeps BPM/meter available for the grid, snapping, and cues. There is no global playback metronome.
-- Local verification: unit tests passed; arm64-v8a and x86_64 native builds passed; real WAV envelopes and active emulator audio output passed in portrait and landscape.
+- Local verification: unit tests passed; `armeabi-v7a`, `arm64-v8a`, and `x86_64` native builds and APK packaging passed; real WAV envelopes and active x86_64 emulator audio output passed in portrait and landscape.
 - Release verification: the owner completed the in-app signed upgrade from `v0.1.0-alpha.1` to `v0.2.0-alpha.1` on a physical Android phone. The device model is intentionally not recorded in the public repository because this result validates the updater flow, not audio-hardware compatibility.
 
 ## Partial
 
 - WAV files are predecoded into memory before playback: maximum 16 tracks and 512 MB per file. Decoder-worker ring buffers are still required for long show assets.
+- `armeabi-v7a` installation is packaged and compile-verified, but physical 32-bit playback and the tighter memory ceiling of typical 32-bit devices remain unvalidated.
 - Route-change handling is connected; full foreground playback-service/lifecycle recovery is pending.
 - Voice cues depend on an installed Android TTS voice and currently allow up to 32 enabled announcements per master track.
 

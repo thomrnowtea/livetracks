@@ -1,8 +1,13 @@
+import java.util.zip.ZipFile
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+val supportedAbis = listOf("armeabi-v7a", "arm64-v8a", "x86_64")
+val requiredNativeLibraries = listOf("libc++_shared.so", "liblivetracks_audio.so", "liboboe.so")
 
 android {
     namespace = "com.thomrnowtea.livetracks"
@@ -13,8 +18,8 @@ android {
         applicationId = "com.thomrnowtea.livetracks"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 2
-        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0-alpha.1"
+        versionCode = providers.environmentVariable("VERSION_CODE").orNull?.toIntOrNull() ?: 3
+        versionName = providers.environmentVariable("VERSION_NAME").orNull ?: "0.2.0-alpha.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
@@ -24,7 +29,7 @@ android {
             }
         }
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += supportedAbis
         }
     }
 
@@ -74,6 +79,42 @@ android {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
+
+fun registerAbiVerificationTask(taskName: String, variantName: String) {
+    tasks.register(taskName) {
+        group = "verification"
+        description = "Verifies that the $variantName APK contains every supported native ABI."
+        dependsOn("assemble${variantName.replaceFirstChar(Char::uppercaseChar)}")
+
+        doLast {
+            val apk = layout.buildDirectory
+                .file("outputs/apk/$variantName/app-$variantName.apk")
+                .get()
+                .asFile
+            check(apk.isFile) { "APK not found: ${apk.absolutePath}" }
+
+            val entries = mutableSetOf<String>()
+            ZipFile(apk).use { zip ->
+                val iterator = zip.entries()
+                while (iterator.hasMoreElements()) {
+                    entries += iterator.nextElement().name
+                }
+            }
+
+            val missing = supportedAbis.flatMap { abi ->
+                requiredNativeLibraries
+                    .map { library -> "lib/$abi/$library" }
+                    .filterNot(entries::contains)
+            }
+            check(missing.isEmpty()) {
+                "APK is missing required native libraries: ${missing.joinToString()}"
+            }
+        }
+    }
+}
+
+registerAbiVerificationTask("verifyDebugApkAbis", "debug")
+registerAbiVerificationTask("verifyReleaseApkAbis", "release")
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))

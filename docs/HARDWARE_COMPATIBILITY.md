@@ -2,6 +2,16 @@
 
 No physical combinations have been validated yet.
 
+## Packaged CPU architectures
+
+| ABI | APK | Native engine | Physical audio |
+|---|---|---|---|
+| `armeabi-v7a` | Included | Compile-verified | NOT TESTED |
+| `arm64-v8a` | Included | Compile-verified | NOT TESTED |
+| `x86_64` | Included | Compile-verified | Emulator smoke-tested only |
+
+An included ABI establishes installation compatibility, not reliable audio performance. In particular, many 32-bit ARM devices have substantially tighter process-memory limits while this alpha still preloads decoded stems.
+
 | Device | Android | Accessory | Requested ch | Actual ch | Mode | SR | Stability | Notes |
 |---|---|---|---:|---:|---|---:|---|---|
 | Android phone | pending | internal speaker | 2 | pending | Single Mix | pending | NOT TESTED | Requires physical-device validation |

@@ -102,7 +102,9 @@ El actualizador no instala silenciosamente. Antes de abrir el instalador de Andr
 
 ## Estado actual y límites
 
-La versión alpha precarga cada archivo en memoria, con un máximo de 16 stems y 512 MB decodificados por archivo. El streaming por ring buffers, el servicio de reproducción foreground, la validación física de Stereo Split/USB, el autoavance y el Live Mode ampliado siguen pendientes.
+Los APK oficiales incluyen código nativo para ARM de 32 bits (`armeabi-v7a`), ARM de 64 bits (`arm64-v8a`) y emulador (`x86_64`). El soporte de empaquetado permite instalar en esas familias de CPU, pero no certifica el hardware de audio de un dispositivo físico.
+
+La versión alpha precarga cada archivo en memoria, con un máximo de 16 stems y 512 MB decodificados por archivo. El menor espacio de direcciones y la memoria disponible en muchos equipos de 32 bits hacen especialmente importante probar primero con archivos cortos y conservadores. El streaming por ring buffers, el servicio de reproducción foreground, la validación física de Stereo Split/USB, el autoavance y el Live Mode ampliado siguen pendientes.
 
 La fuente de verdad sobre lo implementado es [Implementation status](docs/STATUS.md). Las afirmaciones de compatibilidad física viven en [Hardware compatibility](docs/HARDWARE_COMPATIBILITY.md); una prueba en emulador no se presenta como validación de escenario.
 
@@ -117,11 +119,11 @@ Requisitos:
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-./gradlew testDebugUnitTest lintDebug assembleDebug
+./gradlew testDebugUnitTest lintDebug verifyDebugApkAbis
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-El proyecto separa `ui`, `domain`, `data`, `audio` y `cpp`; las dependencias apuntan hacia el dominio y el motor nativo nunca depende de UI o persistencia. Los builds verifican `arm64-v8a` y `x86_64`.
+El proyecto separa `ui`, `domain`, `data`, `audio` y `cpp`; las dependencias apuntan hacia el dominio y el motor nativo nunca depende de UI o persistencia. Los builds verifican `armeabi-v7a`, `arm64-v8a` y `x86_64`.
 
 ## Documentación
 

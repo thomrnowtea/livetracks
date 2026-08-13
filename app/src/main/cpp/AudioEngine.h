@@ -10,6 +10,11 @@
 
 #include <oboe/Oboe.h>
 
+static_assert(std::atomic<int64_t>::is_always_lock_free,
+              "Realtime transport requires lock-free 64-bit integer atomics");
+static_assert(std::atomic<double>::is_always_lock_free,
+              "Realtime metronome controls require lock-free 64-bit floating-point atomics");
+
 class AudioEngine final : public oboe::AudioStreamDataCallback,
                           public oboe::AudioStreamErrorCallback {
 public:

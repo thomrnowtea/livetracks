@@ -46,7 +46,7 @@ jobs:
           echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
           echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
       - name: Verify and build signed release
-        run: ./gradlew testDebugUnitTest lintDebug assembleRelease
+        run: ./gradlew testDebugUnitTest lintDebug verifyReleaseApkAbis
       - name: Verify signature and prepare downloads
         shell: bash
         run: |

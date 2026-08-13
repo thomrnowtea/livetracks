@@ -4,6 +4,18 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## [0.2.0-alpha.2] - 2026-08-13
+
+### Added
+
+- Added `armeabi-v7a` packaging for 32-bit ARM devices alongside the existing `arm64-v8a` and `x86_64` targets.
+- Added cross-platform Gradle gates that reject debug or release APKs missing the native engine, Oboe, or shared C++ runtime for any supported ABI.
+
+### Safety
+
+- Added compile-time lock-free assertions for the 64-bit transport and metronome atomics used by the realtime callback.
+- Documented that ABI packaging does not replace physical playback, latency, routing, or low-memory validation on 32-bit hardware.
+
 ### Changed
 
 - Updated CI and release actions to their current Node 24-compatible major versions, with automated patch updates and manual coordinated minor/major upgrades for the Android/Kotlin/native-audio toolchain.
