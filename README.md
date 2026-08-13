@@ -44,11 +44,19 @@ Each song is a synchronized container of stems. Every stem follows the same audi
 ## Screenshots
 
 <p align="center">
+  <img src="docs/images/metronome-landscape.png" alt="LiveTracks per-song metronome in landscape" width="760">
+</p>
+
+<p align="center">
   <img src="docs/images/timeline-landscape.png" alt="LiveTracks timeline in landscape" width="760">
 </p>
 
 <p align="center">
-  <img src="docs/images/timeline-portrait.png" alt="LiveTracks timeline in portrait" width="320">
+  <img src="docs/images/mixer-landscape.png" alt="LiveTracks stem mixer in landscape" width="760">
+</p>
+
+<p align="center">
+  <img src="docs/images/projects-portrait.png" alt="LiveTracks projects in portrait" width="320">
   &nbsp;&nbsp;
   <img src="docs/images/stage-mode.png" alt="LiveTracks Stage Mode" width="320">
 </p>
@@ -59,20 +67,20 @@ Each song is a synchronized container of stems. Every stem follows the same audi
 |---|---|
 | **Projects and playlist** | Multiple shows, reorderable songs, contextual project/song mixers, safe manual Previous/Next navigation, and continuous automatic play-through. |
 | **Timeline** | Persistently cached real waveforms, zoom down to 10 ms, draggable playhead, snapping, offsets, non-destructive split, extraction into a new song, and 50-step Undo/Redo. |
-| **Metronome and structure** | Per-song BPM and meter, inheritable defaults, optional musical grid, a click-reference stem, and Intro/Verse/Chorus/Bridge/Solo markers. |
+| **Metronome and structure** | Per-song editable BPM and meter seeded from the project default, TAP tempo, optional musical grid, a click-reference stem, and Intro/Verse/Chorus/Bridge/Solo markers. |
 | **Mixing** | Adaptive project, song, and stem consoles; per-stem fader, pan, mute, solo, MAIN/MONITOR sends, and meters; Single Mix and Stereo Split output modes. |
 | **Live operation** | A clean Stage Mode with large Previous, Play/Pause, Stop, and Next controls, double-tap playback, and automatic continuation. Optional keep-screen-awake and exclusive performance settings. |
 | **Audio files** | Native PCM/float WAV; MP3, AAC/M4A, FLAC, and OGG through available Android codecs; empty stems with an explicit duration are also supported. |
 | **Distribution** | Signed releases, SHA-256 checksums, and an in-app updater that validates version, package, certificate, and file integrity. |
 
-The interface adapts to portrait and landscape, is available in English and Spanish, and lets performers collapse tools or panels when workspace matters more than editing controls.
+The interface adapts to portrait and landscape, is available in English and Spanish, and uses four equal primary destinations: Projects, Playlist, Stems, and Settings. Metronome, Timeline, and Mixer sit together inside Stems; native click, MAIN audition, and physical output routing live under **Settings → Metronome**.
 
 ## Typical workflow
 
 1. Create a project for the show.
 2. Add and order the songs in the playlist.
 3. Import each song's stems or create empty regions.
-4. Align entrances on the timeline, add section markers, and configure the metronome.
+4. In Stems, align entrances on the Timeline, add section markers, and configure TAP/BPM/meter from the adjacent Metronome view.
 5. Mix levels, pan, mute/solo, and MAIN/MONITOR routing.
 6. Validate the physical output with the exact hardware that will be used live.
 7. Enter Stage Mode once editing is complete.

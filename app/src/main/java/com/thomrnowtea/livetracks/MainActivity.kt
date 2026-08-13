@@ -262,7 +262,6 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                             viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
                             openTimeline = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.TIMELINE) },
                             openMixer = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.MIXER) },
-                            openMetronome = { viewModel.setWorkspace(Workspace.METRONOME) },
                         )
                     }
                 } else Column(Modifier.fillMaxSize()) {
@@ -273,7 +272,6 @@ fun LiveTracksRoot(viewModel: MainViewModel = viewModel()) {
                         viewModel::skipToNextMasterTrack, viewModel::seekToFraction, viewModel::panic,
                         openTimeline = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.TIMELINE) },
                         openMixer = { viewModel.setWorkspace(Workspace.TRACK); viewModel.setTrackWorkspace(TrackWorkspace.MIXER) },
-                        openMetronome = { viewModel.setWorkspace(Workspace.METRONOME) },
                     )
                     BottomNavigation(state.workspace, viewModel::setWorkspace)
                 }
@@ -299,7 +297,6 @@ private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: ()
                 Workspace.PROJECTS -> ProjectsScreen(state, vm)
                 Workspace.PLAYLIST -> PlaylistScreen(state, vm)
                 Workspace.TRACK -> TrackScreen(state, vm, addAudio, replaceAudio)
-                Workspace.METRONOME -> MetronomeScreen(state, vm)
                 Workspace.SETTINGS -> SettingsScreen(state, vm)
             }
         }
@@ -308,13 +305,13 @@ private fun WorkspaceContent(state: MainUiState, vm: MainViewModel, addAudio: ()
 
 @Composable
 private fun BottomNavigation(active: Workspace, select: (Workspace) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(52.dp).background(Color(0xFF1A1B1D)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(52.dp).background(Color(0xFF1A1B1D)).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Workspace.entries.forEach { item ->
             val selected = item == active
             val itemLabel = item.railLabel()
             Surface(
                 onClick = { select(item) },
-                modifier = Modifier.weight(1f).height(44.dp).semantics { contentDescription = itemLabel; role = Role.Button },
+                modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 2.dp).semantics { contentDescription = itemLabel; role = Role.Button },
                 color = if (selected) Mint.copy(alpha = .14f) else Color.Transparent,
                 shape = RoundedCornerShape(10.dp),
             ) {
@@ -330,31 +327,20 @@ private fun BottomNavigation(active: Workspace, select: (Workspace) -> Unit) {
 @Composable
 private fun SideNavigation(active: Workspace, select: (Workspace) -> Unit) {
     Column(
-        Modifier.width(64.dp).fillMaxHeight().background(Color(0xFF1A1B1D)).padding(vertical = 8.dp),
+        Modifier.width(64.dp).fillMaxHeight().background(Color(0xFF1A1B1D)).padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Surface(Modifier.size(48.dp), color = Raised, shape = RoundedCornerShape(6.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Border)) {
-            Image(painterResource(R.drawable.ic_brand_mark), contentDescription = "LiveTracks", modifier = Modifier.padding(7.dp))
-        }
-        Spacer(Modifier.height(8.dp))
-        Workspace.entries.filterNot { it == Workspace.SETTINGS }.forEach { item ->
+        Workspace.entries.forEach { item ->
             val selected = item == active
             val itemLabel = item.railLabel()
             Surface(
                 onClick = { select(item) },
-                modifier = Modifier.size(52.dp).semantics { contentDescription = itemLabel; role = Role.Button },
+                modifier = Modifier.weight(1f).fillMaxWidth().padding(vertical = 2.dp).semantics { contentDescription = itemLabel; role = Role.Button },
                 color = if (selected) Mint.copy(alpha = .14f) else Color.Transparent,
                 shape = RoundedCornerShape(10.dp),
             ) {
                 Box(contentAlignment = Alignment.Center) { VectorIcon(item.iconRes(), null, if (selected) Mint else TextMuted, Modifier.size(25.dp)) }
             }
-            Spacer(Modifier.height(4.dp))
-        }
-        Spacer(Modifier.weight(1f))
-        val settingsSelected = active == Workspace.SETTINGS
-        val settingsLabel = tr("Ajustes", "Settings")
-        Surface(onClick = { select(Workspace.SETTINGS) }, modifier = Modifier.size(52.dp).semantics { contentDescription = settingsLabel; role = Role.Button }, color = if (settingsSelected) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(10.dp)) {
-            Box(contentAlignment = Alignment.Center) { VectorIcon(R.drawable.ic_ui_settings, null, if (settingsSelected) Mint else TextMuted, Modifier.size(25.dp)) }
         }
     }
 }
@@ -363,14 +349,12 @@ private fun Workspace.iconRes() = when (this) {
     Workspace.PROJECTS -> R.drawable.ic_ui_projects
     Workspace.PLAYLIST -> R.drawable.ic_ui_playlist
     Workspace.TRACK -> R.drawable.ic_ui_track
-    Workspace.METRONOME -> R.drawable.ic_ui_metronome
     Workspace.SETTINGS -> R.drawable.ic_ui_settings
 }
 @Composable private fun Workspace.railLabel() = when (this) {
     Workspace.PROJECTS -> tr("SHOWS", "SHOWS")
     Workspace.PLAYLIST -> tr("LISTA", "SETLIST")
     Workspace.TRACK -> tr("PISTA", "TRACK")
-    Workspace.METRONOME -> tr("CLICK", "CLICK")
     Workspace.SETTINGS -> tr("AJUSTES", "SETTINGS")
 }
 
@@ -384,7 +368,7 @@ private fun CompactContextBar(state: MainUiState, vm: MainViewModel) {
             Modifier.fillMaxSize().padding(horizontal = if (compact) 8.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (state.workspace == Workspace.METRONOME && project != null && master != null) {
+            if (state.workspace == Workspace.TRACK && state.trackWorkspace == TrackWorkspace.METRONOME && project != null && master != null) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text(project.name, Modifier.weight(.32f, fill = false), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("  /  ", color = TextMuted, fontSize = 12.sp)
@@ -412,12 +396,14 @@ private fun CompactContextBar(state: MainUiState, vm: MainViewModel) {
                 ContextModeButton(R.drawable.ic_ui_mixer, tr("Mixer de pista", "Track mixer"), state.playlistWorkspace == PlaylistWorkspace.MIXER) { vm.setPlaylistWorkspace(PlaylistWorkspace.MIXER) }
                 Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
             } else if (state.workspace == Workspace.TRACK && master != null) {
+                ContextModeButton(R.drawable.ic_ui_metronome, tr("Metrónomo", "Metronome"), state.trackWorkspace == TrackWorkspace.METRONOME) { vm.setTrackWorkspace(TrackWorkspace.METRONOME) }
+                Spacer(Modifier.width(4.dp))
                 ContextModeButton(R.drawable.ic_ui_timeline, tr("Timeline", "Timeline"), state.trackWorkspace == TrackWorkspace.TIMELINE) { vm.setTrackWorkspace(TrackWorkspace.TIMELINE) }
                 Spacer(Modifier.width(4.dp))
                 ContextModeButton(R.drawable.ic_ui_mixer, tr("Consola de stems", "Stem console"), state.trackWorkspace == TrackWorkspace.MIXER) { vm.setTrackWorkspace(TrackWorkspace.MIXER) }
                 Spacer(Modifier.width(if (compact) 6.dp else 12.dp))
             }
-            if (!compact && state.workspace != Workspace.METRONOME) {
+            if (!compact && !(state.workspace == Workspace.TRACK && state.trackWorkspace == TrackWorkspace.METRONOME)) {
                 Text(metro?.let { "${formatBpm(it.bpm)} BPM  ·  ${it.numerator}/${it.denominator}" } ?: "— BPM", color = TextMuted, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 Spacer(Modifier.width(16.dp))
             }
@@ -496,7 +482,7 @@ private fun StatusPill(state: MainUiState) {
 }
 
 private fun Workspace.label() = when (this) {
-    Workspace.PROJECTS -> "PROYECTOS"; Workspace.PLAYLIST -> "PLAYLIST"; Workspace.TRACK -> "PISTA"; Workspace.METRONOME -> "CLICK"; Workspace.SETTINGS -> "AJUSTES"
+    Workspace.PROJECTS -> "PROYECTOS"; Workspace.PLAYLIST -> "PISTAS"; Workspace.TRACK -> "STEMS"; Workspace.SETTINGS -> "CONFIGURACIÓN"
 }
 
 @Composable
@@ -843,6 +829,7 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
         label = "trackWorkspace",
     ) { workspace ->
         when (workspace) {
+            TrackWorkspace.METRONOME -> TrackMetronomePanel(state, vm)
             TrackWorkspace.TIMELINE -> TimelineEditor(state, vm, replaceAudio) { showStemOptions = true }
             TrackWorkspace.MIXER -> MixerConsole(state.tracks, vm)
         }
@@ -860,6 +847,17 @@ private fun TrackScreen(state: MainUiState, vm: MainViewModel, addAudio: () -> U
             confirm = { name, duration -> vm.createEmptyTrack(name, duration); showEmptyStemDialog = false },
         )
     }
+}
+
+@Composable
+private fun TrackMetronomePanel(state: MainUiState, vm: MainViewModel) {
+    val project = state.selectedProject()
+    val master = state.selectedMaster()
+    if (project == null || master == null) {
+        ConsolePanel(Modifier.fillMaxSize()) { MissingMasterMetronome(vm) }
+        return
+    }
+    MasterMetronomePanel(project, master, vm)
 }
 
 @Composable
@@ -2340,7 +2338,7 @@ private fun MetronomeControlCard(
 ) {
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-            MetronomeControls(value, enabled, usingReferenceStem) { transform -> vm.updateMasterMetronome(transform) }
+            MetronomeClockConsole(value, enabled, { transform -> vm.updateMasterMetronome(transform) }, Modifier.fillMaxWidth())
             if (usingReferenceStem) {
                 Spacer(Modifier.height(12.dp))
                 SettingsNotice(tr(
@@ -2803,24 +2801,25 @@ private fun RoutingHardwareModule(state: MainUiState, vm: MainViewModel, modifie
     }
 }
 
-private enum class SettingsSection { GENERAL, STEMS, ABOUT }
+private enum class SettingsSection { GENERAL, METRONOME, STEMS, ABOUT }
 
 @Composable
 private fun SettingsScreen(state: MainUiState, vm: MainViewModel) {
     var section by remember { mutableStateOf(SettingsSection.GENERAL) }
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().height(42.dp).background(Panel).padding(horizontal = 4.dp),
+            Modifier.fillMaxWidth().height(52.dp).background(Panel).padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             SettingsSection.entries.forEach { item ->
                 val label = when (item) {
                     SettingsSection.GENERAL -> tr("GENERAL", "GENERAL")
+                    SettingsSection.METRONOME -> tr("METRÓNOMO", "METRONOME")
                     SettingsSection.STEMS -> "STEMS"
                     SettingsSection.ABOUT -> tr("ACERCA DE", "ABOUT")
                 }
-                SegmentButton(label, section == item) { section = item }
+                SegmentButton(label, section == item, Modifier.weight(1f).fillMaxHeight().padding(horizontal = 2.dp)) { section = item }
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -2842,6 +2841,7 @@ private fun SettingsScreen(state: MainUiState, vm: MainViewModel) {
                     ) {
                         when (activeSection) {
                             SettingsSection.GENERAL -> GeneralSettings(state, vm)
+                            SettingsSection.METRONOME -> MetronomeSettingsSection(state, vm)
                             SettingsSection.STEMS -> StemSettings(state, vm)
                             SettingsSection.ABOUT -> AboutSettings(state, vm)
                         }
@@ -2850,6 +2850,43 @@ private fun SettingsScreen(state: MainUiState, vm: MainViewModel) {
             }
         }
     }
+}
+
+@Composable
+private fun MetronomeSettingsSection(state: MainUiState, vm: MainViewModel) {
+    val project = state.selectedProject()
+    val master = state.selectedMaster()
+    SettingsHeading(
+        tr("Metrónomo y salida", "Metronome and output"),
+        tr("Configura el click de la pista seleccionada y valida su ruteo antes del show.", "Configure the selected track click and validate its routing before the show."),
+    )
+    if (project == null || master == null) {
+        SettingsNotice(tr("Selecciona una pista de la playlist para configurar su click.", "Select a playlist track to configure its click."))
+        return
+    }
+    val value = master.metronome(project.defaultMetronome)
+    NativeClickControl(value, true, master.clickReferenceTrack() != null, vm::updateMasterMetronome, Modifier.fillMaxWidth())
+    MainAuditionControl(value, true, vm::updateMasterMetronome, Modifier.fillMaxWidth())
+    SettingsHeading(
+        tr("Ruteo de salida", "Output routing"),
+        tr("Selecciona el modo de salida y comprueba el hardware conectado.", "Select the output mode and check the connected hardware."),
+    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val compact = maxWidth < 600.dp
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.fillMaxWidth().height(148.dp))
+                RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated on monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.fillMaxWidth().height(148.dp))
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().height(168.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RouteCard("SINGLE MIX", "MAIN L/R", tr("Mezcla estéreo principal", "Main stereo mix"), !state.stereoSplit, { vm.setStereoSplit(false) }, Modifier.weight(1f))
+                RouteCard("STEREO SPLIT", "L MAIN · R MON", tr("Click aislado en monitor", "Click isolated on monitor"), state.stereoSplit, { vm.setStereoSplit(true) }, Modifier.weight(1f))
+            }
+        }
+    }
+    RoutingHardwareModule(state, vm, Modifier.fillMaxWidth().height(104.dp))
+    SettingsNotice(tr("El click sale protegido por MONITOR salvo que habilites Audición en MAIN. Valida siempre el hardware real antes del show.", "The click is protected on MONITOR unless Audition on MAIN is enabled. Always validate the real hardware before the show."))
 }
 
 @Composable
@@ -3166,7 +3203,6 @@ private fun CompactTransport(
     panic: () -> Unit,
     openTimeline: () -> Unit,
     openMixer: () -> Unit,
-    openMetronome: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -3205,7 +3241,6 @@ private fun CompactTransport(
                                     TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
                                     TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
                                     TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
-                                    TimelineMenuItem(DawIcon.METRONOME, tr("Abrir click y ruteo", "Open click and routing"), project != null) { menuExpanded = false; openMetronome() }
                                     TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
                                 }
                             }
@@ -3238,7 +3273,6 @@ private fun CompactTransport(
                                 TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
                                 TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
                                 TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
-                                TimelineMenuItem(DawIcon.METRONOME, tr("Abrir click y ruteo", "Open click and routing"), project != null) { menuExpanded = false; openMetronome() }
                                 TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
                             }
                         }
@@ -3270,7 +3304,6 @@ private fun CompactTransport(
                             if (compact) TimelineMenuItem(DawIcon.STOP, tr("Detener", "Stop"), true) { menuExpanded = false; stop() }
                             TimelineMenuItem(DawIcon.TIMELINE, tr("Abrir timeline", "Open timeline"), master != null) { menuExpanded = false; openTimeline() }
                             TimelineMenuItem(DawIcon.MIXER, tr("Abrir consola", "Open mix console"), master != null) { menuExpanded = false; openMixer() }
-                            TimelineMenuItem(DawIcon.METRONOME, tr("Abrir click y ruteo", "Open click and routing"), project != null) { menuExpanded = false; openMetronome() }
                             TimelineMenuItem(DawIcon.PANIC, "PANIC", true, danger = true) { menuExpanded = false; panic() }
                         }
                     }
@@ -3470,7 +3503,7 @@ private fun DawIconButton(
     }
 }
 
-@Composable private fun SegmentButton(label: String, active: Boolean, click: () -> Unit) = Button(click, modifier = Modifier.height(32.dp), colors = ButtonDefaults.buttonColors(containerColor = if (active) Blue else Raised, contentColor = if (active) Color.White else TextMuted), contentPadding = PaddingValues(horizontal = 12.dp), shape = RoundedCornerShape(6.dp)) { Text(label, fontSize = 9.sp, fontWeight = FontWeight.Black) }
+@Composable private fun SegmentButton(label: String, active: Boolean, modifier: Modifier = Modifier, click: () -> Unit) = Button(click, modifier = modifier, colors = ButtonDefaults.buttonColors(containerColor = if (active) Blue else Raised, contentColor = if (active) Color.White else TextMuted), contentPadding = PaddingValues(horizontal = 4.dp), shape = RoundedCornerShape(6.dp)) { Text(label, fontSize = 9.sp, fontWeight = FontWeight.Black, maxLines = 1) }
 @Composable private fun LabelValue(label: String, value: String, color: Color) = Row(Modifier.fillMaxWidth()) { Text(label, Modifier.weight(1f), color = TextMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold); Text(value, color = color, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
 @Composable
 private fun PeakMeter(peak: Float, color: Color, modifier: Modifier) {

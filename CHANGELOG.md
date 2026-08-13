@@ -4,6 +4,20 @@ All notable changes will be documented here. Versions follow Semantic Versioning
 
 ## Unreleased
 
+## [0.2.0-alpha.8] - 2026-08-13
+
+### Added
+
+- Added per-song TAP tempo based on the interval between consecutive presses, with exact domain tests for valid and rejected intervals.
+
+### Changed
+
+- Reduced primary navigation to four equal full-cell destinations in both orientations: Projects, Playlist, Stems, and Settings.
+- Moved the per-song Metronome beside Timeline and Mixer inside Stems, with Metronome positioned first for immediate access.
+- Simplified every song to one editable metronome configuration seeded from the project default; removed the Template/Inherits/Custom selector and its duplicate heading.
+- Moved Native Click, MAIN Audition, Single Mix/Stereo Split, and current hardware routing into the new **Settings → Metronome** section between General and Stems.
+- Refreshed the English and Spanish project documentation and the five current product screenshots.
+
 ## [0.2.0-alpha.5] - 2026-08-13
 
 ### Added

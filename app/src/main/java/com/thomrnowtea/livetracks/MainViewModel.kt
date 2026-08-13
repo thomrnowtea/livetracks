@@ -59,10 +59,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToLong
 
-enum class Workspace { PROJECTS, PLAYLIST, TRACK, METRONOME, SETTINGS }
+enum class Workspace { PROJECTS, PLAYLIST, TRACK, SETTINGS }
 enum class ProjectWorkspace { LIST, MIXER }
 enum class PlaylistWorkspace { LIST, MIXER }
-enum class TrackWorkspace { TIMELINE, MIXER }
+enum class TrackWorkspace { METRONOME, TIMELINE, MIXER }
 
 data class MixerTrackUi(
     val id: String,

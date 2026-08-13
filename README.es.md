@@ -44,11 +44,19 @@ Cada canción es un contenedor sincronizado de stems. Todos parten del mismo rel
 ## Capturas
 
 <p align="center">
+  <img src="docs/images/metronome-landscape.png" alt="Metrónomo por pista de LiveTracks en landscape" width="760">
+</p>
+
+<p align="center">
   <img src="docs/images/timeline-landscape.png" alt="Timeline de LiveTracks en landscape" width="760">
 </p>
 
 <p align="center">
-  <img src="docs/images/timeline-portrait.png" alt="Timeline de LiveTracks en portrait" width="320">
+  <img src="docs/images/mixer-landscape.png" alt="Mixer de stems de LiveTracks en landscape" width="760">
+</p>
+
+<p align="center">
+  <img src="docs/images/projects-portrait.png" alt="Proyectos de LiveTracks en portrait" width="320">
   &nbsp;&nbsp;
   <img src="docs/images/stage-mode.png" alt="Modo Escenario de LiveTracks" width="320">
 </p>
@@ -59,20 +67,20 @@ Cada canción es un contenedor sincronizado de stems. Todos parten del mismo rel
 |---|---|
 | **Proyectos y playlist** | Múltiples shows, canciones reordenables, mixers contextuales de proyecto/canción, anterior/siguiente manual seguro y reproducción continua automática. |
 | **Timeline** | Ondas reales con caché persistente, zoom hasta 10 ms, playhead arrastrable, snapping, offsets, split no destructivo, extracción a una canción nueva y Undo/Redo de 50 pasos. |
-| **Metrónomo y estructura** | BPM y compás por canción, defaults heredables, grilla musical activable, stem de referencia de click y marcadores Intro/Verso/Estribillo/Puente/Solo. |
+| **Metrónomo y estructura** | BPM y compás editables por canción desde el default del proyecto, TAP tempo, grilla musical activable, stem de referencia de click y marcadores Intro/Verso/Estribillo/Puente/Solo. |
 | **Mezcla** | Consolas adaptativas para proyectos, canciones y stems; fader, paneo, mute, solo, MAIN/MONITOR y medidores por stem; salida Single Mix o Stereo Split. |
 | **Operación en vivo** | Modo Escenario con playlist limpia, controles grandes, reproducción por doble toque y continuación automática. Pantalla activa y modo exclusivo opcionales. |
 | **Archivos** | WAV PCM/float nativo; MP3, AAC/M4A, FLAC y OGG mediante los codecs disponibles en Android; también admite stems vacíos con duración definida. |
 | **Distribución** | Releases firmadas, checksum SHA-256 y actualizador integrado con validación de versión, paquete, certificado y archivo. |
 
-La interfaz se adapta a portrait y landscape, está disponible en español e inglés y permite colapsar herramientas o paneles cuando el espacio de trabajo importa más que la edición.
+La interfaz se adapta a portrait y landscape, está disponible en español e inglés y usa cuatro destinos principales equitativos: Proyectos, Pistas, Stems y Configuración. Metrónomo, Timeline y Mixer conviven dentro de Stems; click nativo, audición en MAIN y ruteo físico están en **Ajustes → Metrónomo**.
 
 ## Flujo de trabajo
 
 1. Crea un proyecto para el show.
 2. Agrega y ordena las canciones de la playlist.
 3. Importa los stems de cada canción o crea regiones vacías.
-4. Alinea entradas en la timeline, agrega marcadores y ajusta el metrónomo.
+4. Dentro de Stems, alinea entradas en la Timeline, agrega marcadores y ajusta TAP/BPM/compás desde la vista Metrónomo adyacente.
 5. Mezcla niveles, paneo, mute/solo y ruteo MAIN/MONITOR.
 6. Valida la salida física con el mismo hardware que usarás en vivo.
 7. Entra a Modo Escenario cuando la edición esté terminada.
