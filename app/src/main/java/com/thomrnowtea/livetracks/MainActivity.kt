@@ -384,11 +384,21 @@ private fun CompactContextBar(state: MainUiState, vm: MainViewModel) {
             Modifier.fillMaxSize().padding(horizontal = if (compact) 8.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Text(project?.name ?: tr("Sin proyecto", "No project"), Modifier.weight(1f, fill = false), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (master != null && !compact) {
+            if (state.workspace == Workspace.METRONOME && project != null && master != null) {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(project.name, Modifier.weight(.32f, fill = false), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("  /  ", color = TextMuted, fontSize = 12.sp)
-                    Text(master.name, Modifier.weight(1f, fill = false), color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(master.name, Modifier.weight(.36f, fill = false), color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("  /  ", color = TextMuted, fontSize = 12.sp)
+                    Text(tr("Metrónomo", "Metronome"), color = TextMuted, fontSize = 12.sp, maxLines = 1)
+                }
+            } else {
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(project?.name ?: tr("Sin proyecto", "No project"), Modifier.weight(1f, fill = false), fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (master != null && !compact) {
+                        Text("  /  ", color = TextMuted, fontSize = 12.sp)
+                        Text(master.name, Modifier.weight(1f, fill = false), color = TextMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
             if (state.workspace == Workspace.PROJECTS) {
@@ -1982,18 +1992,6 @@ private fun MetronomeScreen(state: MainUiState, vm: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
-            item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).background(Amber.copy(alpha = .12f), CircleShape), contentAlignment = Alignment.Center) {
-                        VectorIcon(R.drawable.ic_ui_metronome, null, Amber, Modifier.size(25.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(tr("CLICK Y TEMPO", "CLICK AND TEMPO"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(master?.name ?: tr("Selecciona una pista", "Select a track"), color = TextMuted, fontSize = 10.sp)
-                    }
-                }
-            }
             item {
                 MasterMetronomePanel(
                     project,
