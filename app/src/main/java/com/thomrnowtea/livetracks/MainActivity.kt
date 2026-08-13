@@ -1130,6 +1130,7 @@ private fun TimelineEditor(state: MainUiState, vm: MainViewModel, replaceAudio: 
                                             activeSnapFrames = if (state.settings.timelineSnapEnabled) it else null
                                         },
                                         select = { vm.selectTimelineTrack(track.id) },
+                                        replace = { replaceAudio(track.id) },
                                         commitOffset = { vm.setTrackOffset(track.id, it) },
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     )
@@ -1420,6 +1421,7 @@ private fun TimelineLaneViewport(
     snapOffset: (Long) -> Long,
     previewSnap: (Long?) -> Unit,
     select: () -> Unit,
+    replace: () -> Unit,
     commitOffset: (Long) -> Unit,
     modifier: Modifier,
 ) {
@@ -1459,6 +1461,7 @@ private fun TimelineLaneViewport(
                     .width(with(density) { widthPx.toDp() }).fillMaxHeight()
                     .clip(RoundedCornerShape(4.dp)).background(clipColor.copy(alpha = if (selected) .78f else .58f))
                     .then(if (selected) Modifier.border(BorderStroke(2.dp, Silver), RoundedCornerShape(4.dp)) else Modifier)
+                    .combinedClickable(onClick = select, onDoubleClick = replace)
                     .pointerInput(track.id, pxPerSecond) {
                         detectDragGestures(
                             onDragStart = {
