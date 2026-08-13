@@ -1602,39 +1602,97 @@ private fun MasterScreen(state: MainUiState, vm: MainViewModel) {
             tr("IR A PROYECTOS", "GO TO PROJECTS"),
         ) { vm.setWorkspace(Workspace.PROJECTS) } }; return
     }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().height(52.dp).background(Panel, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text(section.title(), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                val scopeName = if (section == MasterSection.PROJECT) project.name else master?.name ?: tr("Sin canción", "No song")
-                Text(scopeName, color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val landscape = maxWidth >= 700.dp && maxWidth > maxHeight
+        if (landscape) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MasterSectionContent(section, project, master, state, vm, Modifier.weight(1f).fillMaxHeight())
+                MasterSectionRail(section, { section = it }, Modifier.width(52.dp).fillMaxHeight())
             }
-            MasterSection.entries.forEach { item ->
-                val itemTitle = item.title()
-                Surface(onClick = { section = item }, modifier = Modifier.size(44.dp).semantics { contentDescription = itemTitle; role = Role.Button }, color = if (section == item) Mint.copy(alpha = .14f) else Color.Transparent, shape = RoundedCornerShape(9.dp)) {
-                    Box(contentAlignment = Alignment.Center) { VectorIcon(item.iconRes, null, if (section == item) Mint else TextMuted, Modifier.size(22.dp)) }
-                }
-                Spacer(Modifier.width(4.dp))
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                MasterSectionStrip(section, { section = it }, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(4.dp))
+                MasterSectionContent(section, project, master, state, vm, Modifier.weight(1f).fillMaxWidth())
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AnimatedContent(
-                targetState = section,
-                transitionSpec = {
-                    (fadeIn(tween(170)) + slideInVertically(tween(180)) { it / 12 }) togetherWith
-                        (fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 16 })
-                },
-                modifier = Modifier.fillMaxSize(),
-                label = "masterSection",
-            ) { activeSection ->
-                when (activeSection) {
-                    MasterSection.PROJECT -> ProjectMasterPanel(project, vm)
-                    MasterSection.TRACK -> MasterTrackPanel(master, vm)
-                    MasterSection.METRONOME -> MasterMetronomePanel(project, master, vm)
-                    MasterSection.ROUTING -> RoutingPanel(state, vm)
-                }
+    }
+}
+
+@Composable
+private fun MasterSectionStrip(
+    section: MasterSection,
+    select: (MasterSection) -> Unit,
+    modifier: Modifier,
+) {
+    Row(
+        modifier.height(44.dp).background(Panel, RoundedCornerShape(9.dp)).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        MasterSection.entries.forEach { item ->
+            MasterSectionButton(item, section == item, Modifier.size(44.dp)) { select(item) }
+        }
+    }
+}
+
+@Composable
+private fun MasterSectionRail(
+    section: MasterSection,
+    select: (MasterSection) -> Unit,
+    modifier: Modifier,
+) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border.copy(alpha = .55f))) {
+        Column(
+            Modifier.fillMaxSize().padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            MasterSection.entries.forEach { item ->
+                MasterSectionButton(item, section == item, Modifier.size(44.dp)) { select(item) }
             }
+        }
+    }
+}
+
+@Composable
+private fun MasterSectionButton(item: MasterSection, selected: Boolean, modifier: Modifier, click: () -> Unit) {
+    val title = item.title()
+    Surface(
+        onClick = click,
+        modifier = modifier.semantics { contentDescription = title; role = Role.Button },
+        color = if (selected) Mint.copy(alpha = .15f) else Color.Transparent,
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            VectorIcon(item.iconRes, null, if (selected) Mint else TextMuted, Modifier.size(23.dp))
+        }
+    }
+}
+
+@Composable
+private fun MasterSectionContent(
+    section: MasterSection,
+    project: Project,
+    master: MasterTrack?,
+    state: MainUiState,
+    vm: MainViewModel,
+    modifier: Modifier,
+) {
+    AnimatedContent(
+        targetState = section,
+        transitionSpec = {
+            (fadeIn(tween(170)) + slideInVertically(tween(180)) { it / 12 }) togetherWith
+                (fadeOut(tween(100)) + slideOutVertically(tween(120)) { -it / 16 })
+        },
+        modifier = modifier,
+        label = "masterSection",
+    ) { activeSection ->
+        when (activeSection) {
+            MasterSection.PROJECT -> ProjectMasterPanel(project, vm)
+            MasterSection.TRACK -> MasterTrackPanel(master, vm)
+            MasterSection.METRONOME -> MasterMetronomePanel(project, master, vm)
+            MasterSection.ROUTING -> RoutingPanel(state, vm)
         }
     }
 }
@@ -1708,7 +1766,7 @@ private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: Mai
                     if (projectTemplate) {
                         DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
                     } else if (master == null) {
-                        MetronomePanel(project, null, vm)
+                        MissingMasterMetronome(vm)
                     } else {
                         MetronomeControlCard(
                             value = master.metronome(project.defaultMetronome),
@@ -1721,26 +1779,76 @@ private fun MasterMetronomePanel(project: Project, master: MasterTrack?, vm: Mai
                 }
             }
         } else {
-            Column(Modifier.fillMaxSize()) {
-                Row(Modifier.fillMaxWidth().height(44.dp).background(Panel, RoundedCornerShape(9.dp)).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MasterScopeButton(tr("Plantilla del proyecto", "Project template"), projectTemplate, Modifier.weight(1f)) { projectTemplate = true }
-                    MasterScopeButton(tr("Canción seleccionada", "Selected song"), !projectTemplate, Modifier.weight(1f)) { projectTemplate = false }
-                }
-                Spacer(Modifier.height(8.dp))
+            val inherited = master?.metronomeOverride == null
+            val clickReference = master?.clickReferenceTrack()
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                MetronomeWorkspaceStrip(
+                    projectTemplate = projectTemplate,
+                    inherited = inherited,
+                    hasSelectedSong = master != null,
+                    selectTemplate = { projectTemplate = true },
+                    selectInherited = {
+                        projectTemplate = false
+                        vm.setMasterUsesDefault(true)
+                    },
+                    selectCustom = {
+                        projectTemplate = false
+                        vm.setMasterUsesDefault(false)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    AnimatedContent(
-                        targetState = projectTemplate,
-                        transitionSpec = {
-                            (fadeIn(tween(160)) + slideInVertically(tween(170)) { it / 10 }) togetherWith fadeOut(tween(100))
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        label = "metronomeScope",
-                    ) { template ->
-                        if (template) DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
-                        else MetronomePanel(project, master, vm)
+                    if (projectTemplate) {
+                        DefaultMetronomeModule(project, vm, Modifier.fillMaxSize())
+                    } else if (master == null) {
+                        MissingMasterMetronome(vm)
+                    } else {
+                        MetronomeControlCard(
+                            value = master.metronome(project.defaultMetronome),
+                            enabled = !inherited,
+                            usingReferenceStem = clickReference != null,
+                            vm = vm,
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MetronomeWorkspaceStrip(
+    projectTemplate: Boolean,
+    inherited: Boolean,
+    hasSelectedSong: Boolean,
+    selectTemplate: () -> Unit,
+    selectInherited: () -> Unit,
+    selectCustom: () -> Unit,
+    modifier: Modifier,
+) {
+    Surface(modifier, color = Panel, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border.copy(alpha = .6f))) {
+        Row(Modifier.fillMaxWidth().padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            CompactMetronomeModeChoice(
+                tr("PLANTILLA", "TEMPLATE"),
+                projectTemplate,
+                modifier = Modifier.weight(1f),
+                click = selectTemplate,
+            )
+            CompactMetronomeModeChoice(
+                tr("HEREDA", "INHERITS"),
+                !projectTemplate && inherited,
+                enabled = hasSelectedSong,
+                modifier = Modifier.weight(1f),
+                click = selectInherited,
+            )
+            CompactMetronomeModeChoice(
+                tr("PROPIO", "CUSTOM"),
+                !projectTemplate && !inherited,
+                enabled = hasSelectedSong,
+                modifier = Modifier.weight(1f),
+                click = selectCustom,
+            )
         }
     }
 }
@@ -1759,30 +1867,25 @@ private fun MetronomeWorkspaceRail(
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             ConsoleSectionLabel(tr("RELOJ", "CLOCK"), Mint)
-            CompactMetronomeModeChoice(tr("PLANTILLA", "TEMPLATE"), projectTemplate, click = selectTemplate)
+            CompactMetronomeModeChoice(tr("PLANTILLA", "TEMPLATE"), projectTemplate, modifier = Modifier.fillMaxWidth(), click = selectTemplate)
             CompactMetronomeModeChoice(
                 tr("HEREDA", "INHERITS"),
                 !projectTemplate && inherited,
                 enabled = hasSelectedSong,
+                modifier = Modifier.fillMaxWidth(),
                 click = selectInherited,
             )
             CompactMetronomeModeChoice(
                 tr("PERSONALIZADO", "CUSTOM"),
                 !projectTemplate && !inherited,
                 enabled = hasSelectedSong,
+                modifier = Modifier.fillMaxWidth(),
                 click = selectCustom,
             )
             clickReferenceName?.let {
                 Text(it, color = Amber, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-    }
-}
-
-@Composable
-private fun MasterScopeButton(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, modifier = modifier.fillMaxHeight(), color = if (selected) Blue else Color.Transparent, shape = RoundedCornerShape(7.dp)) {
-        Box(contentAlignment = Alignment.Center) { Text(label, color = if (selected) Color.White else TextMuted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
     }
 }
 
@@ -1874,31 +1977,26 @@ private fun MasterTrackPanel(master: MasterTrack?, vm: MainViewModel) {
 }
 
 @Composable
-private fun MetronomePanel(project: Project, master: MasterTrack?, vm: MainViewModel) {
-    if (master == null) { EmptyState(
+private fun MissingMasterMetronome(vm: MainViewModel) {
+    EmptyState(
         tr("SIN PISTA SELECCIONADA", "NO TRACK SELECTED"),
         tr("El metrónomo siempre pertenece a una pista master.", "The metronome always belongs to a master track."),
         tr("ABRIR PLAYLIST", "OPEN PLAYLIST"),
-    ) { vm.setWorkspace(Workspace.PLAYLIST) }; return }
-    val inherited = master.metronomeOverride == null
-    val value = master.metronome(project.defaultMetronome)
-    val clickReference = master.clickReferenceTrack()
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        MetronomeModeCard(master, inherited, clickReference?.name, vm, Modifier.fillMaxWidth())
-        MetronomeControlCard(value, !inherited, clickReference != null, vm, Modifier.fillMaxWidth())
-        Spacer(Modifier.height(8.dp))
-    }
+    ) { vm.setWorkspace(Workspace.PLAYLIST) }
 }
 
 @Composable
-private fun CompactMetronomeModeChoice(label: String, selected: Boolean, enabled: Boolean = true, click: () -> Unit) {
+private fun CompactMetronomeModeChoice(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    click: () -> Unit,
+) {
     Surface(
         onClick = click,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(36.dp),
+        modifier = modifier.height(36.dp),
         color = if (selected) Blue.copy(alpha = .2f) else Raised,
         shape = RoundedCornerShape(7.dp),
         border = BorderStroke(1.dp, if (selected) Mint else Border),
@@ -1917,77 +2015,6 @@ private fun CompactMetronomeModeChoice(label: String, selected: Boolean, enabled
 }
 
 @Composable
-private fun MetronomeModeCard(
-    master: MasterTrack,
-    inherited: Boolean,
-    clickReferenceName: String?,
-    vm: MainViewModel,
-    modifier: Modifier,
-) {
-    Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column {
-                Text("${master.name} · CLICK", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(tr("Configuración de canción", "Song configuration"), fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text(tr("Elegí de dónde toma el tempo esta pista.", "Choose where this song gets its tempo."), color = TextMuted, fontSize = 10.sp)
-            }
-            MetronomeModeChoice(
-                title = tr("Plantilla del proyecto", "Project template"),
-                detail = tr("Sigue los valores predeterminados", "Follows the default values"),
-                selected = inherited,
-            ) { vm.setMasterUsesDefault(true) }
-            MetronomeModeChoice(
-                title = tr("Personalizado", "Custom"),
-                detail = tr("Tempo y click exclusivos", "Independent tempo and click"),
-                selected = !inherited,
-            ) { vm.setMasterUsesDefault(false) }
-            if (clickReferenceName != null) Surface(
-                color = Amber.copy(alpha = .09f),
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, Amber.copy(alpha = .35f)),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    VectorIcon(R.drawable.ic_ui_metronome, null, Amber, Modifier.size(20.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(tr("REFERENCIA DE CLICK", "CLICK REFERENCE"), color = Amber, fontSize = 9.sp, fontWeight = FontWeight.Black)
-                        Text(clickReferenceName, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MetronomeModeChoice(title: String, detail: String, selected: Boolean, click: () -> Unit) {
-    Surface(
-        onClick = click,
-        modifier = Modifier.fillMaxWidth(),
-        color = if (selected) Blue.copy(alpha = .16f) else Raised,
-        shape = RoundedCornerShape(9.dp),
-        border = BorderStroke(1.dp, if (selected) Mint else Border),
-    ) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(18.dp).then(
-                    if (selected) Modifier.background(Mint, CircleShape)
-                    else Modifier.border(1.dp, TextMuted, CircleShape),
-                ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (selected) Box(Modifier.size(6.dp).background(Bg, CircleShape))
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(detail, color = TextMuted, fontSize = 9.sp)
-            }
-        }
-    }
-}
-
-@Composable
 private fun MetronomeControlCard(
     value: MetronomeSettings,
     enabled: Boolean,
@@ -1995,9 +2022,8 @@ private fun MetronomeControlCard(
     vm: MainViewModel,
     modifier: Modifier,
 ) {
-    val landscape = LocalConfiguration.current.run { screenWidthDp > screenHeightDp }
     Surface(modifier, color = Panel, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border.copy(alpha = .7f))) {
-        Column(Modifier.padding(if (landscape) 6.dp else 16.dp)) {
+        Column(Modifier.padding(12.dp)) {
             if (usingReferenceStem) {
                 SettingsNotice(tr(
                     "El stem de referencia reemplaza el click nativo y sale sólo por MONITOR. BPM y compás siguen controlando la grilla y las marcas.",
@@ -2018,10 +2044,10 @@ private fun MetronomeControls(
     update: ((MetronomeSettings) -> MetronomeSettings) -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val horizontal = maxWidth >= 540.dp
+        val horizontal = maxWidth >= 420.dp
         if (horizontal) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-            MetronomeClockConsole(value, enabled, update, Modifier.weight(1.2f))
-            CompactClickOutputControl(value, enabled, usingReferenceStem, update, Modifier.weight(1f))
+            MetronomeClockConsole(value, enabled, update, Modifier.weight(1.35f))
+            CompactClickOutputControl(value, enabled, usingReferenceStem, update, Modifier.weight(.85f))
         } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             MetronomeClockConsole(value, enabled, update, Modifier.fillMaxWidth())
             NativeClickControl(value, enabled, usingReferenceStem, update, Modifier.fillMaxWidth())
@@ -2039,17 +2065,16 @@ private fun CompactClickOutputControl(
     modifier: Modifier,
 ) {
     Surface(modifier, color = Raised, shape = RoundedCornerShape(9.dp), border = BorderStroke(1.dp, Border)) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-            Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(tr("CLICK NATIVO", "NATIVE CLICK"), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        if (usingReferenceStem) tr("Usa stem de referencia", "Reference stem active")
-                        else "MONITOR",
-                        color = if (usingReferenceStem) Amber else TextMuted,
-                        fontSize = 8.sp,
-                    )
-                }
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(Modifier.height(42.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (usingReferenceStem) tr("CLICK DE REFERENCIA", "REFERENCE CLICK") else tr("CLICK NATIVO", "NATIVE CLICK"),
+                    modifier = Modifier.weight(1f),
+                    color = if (usingReferenceStem) Amber else TextMain,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
                 Switch(
                     checked = value.enabled && !usingReferenceStem,
                     onCheckedChange = { update { old -> old.copy(enabled = it) } },
@@ -2064,7 +2089,7 @@ private fun CompactClickOutputControl(
                     ),
                 )
             }
-            Row(Modifier.height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.height(40.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(formatDb(value.gainDb), color = Amber, fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(8.dp))
                 Slider(
@@ -2076,11 +2101,8 @@ private fun CompactClickOutputControl(
                 )
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .65f)))
-            Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(tr("AUDICIÓN MAIN", "MAIN AUDITION"), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(tr("Prueba temporal", "Temporary test"), color = Red, fontSize = 8.sp)
-                }
+            Row(Modifier.height(42.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("AUDICIÓN MAIN", "MAIN AUDITION"), Modifier.weight(1f), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 Switch(
                     checked = value.mainEnabled,
                     onCheckedChange = { main -> update { it.copy(mainEnabled = main) } },
@@ -2183,15 +2205,15 @@ private fun MetronomeClockConsole(
     modifier: Modifier,
 ) {
     Surface(modifier, color = Raised, shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Border)) {
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(10.dp)) {
-            val narrow = maxWidth < 280.dp
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(14.dp)) {
+            val narrow = maxWidth < 230.dp
             if (narrow) Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 TempoConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Border.copy(alpha = .7f)))
                 MeterConsoleModule(value, enabled, update, Modifier.fillMaxWidth())
             } else Row(verticalAlignment = Alignment.CenterVertically) {
                 TempoConsoleModule(value, enabled, update, Modifier.weight(1f))
-                Box(Modifier.padding(horizontal = 12.dp).width(1.dp).height(104.dp).background(Border.copy(alpha = .7f)))
+                Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(116.dp).background(Border.copy(alpha = .7f)))
                 MeterConsoleModule(value, enabled, update, Modifier.weight(1.08f))
             }
         }
@@ -2207,11 +2229,11 @@ private fun TempoConsoleModule(
 ) {
     Column(modifier) {
         ConsoleSectionLabel("TEMPO", Mint)
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(7.dp))
         EditableBpmField(value.bpm, enabled, Modifier.fillMaxWidth().semantics { contentDescription = "BPM" }) { bpm ->
             update { it.copy(bpm = bpm) }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             MetronomeStepButton(R.drawable.ic_ui_remove, tr("Bajar tempo", "Decrease tempo"), enabled, Modifier.weight(1f)) {
                 update { it.copy(bpm = (it.bpm - 1.0).coerceAtLeast(20.0)) }
@@ -2232,7 +2254,7 @@ private fun MeterConsoleModule(
 ) {
     Column(modifier) {
         ConsoleSectionLabel(tr("COMPÁS", "METER"), Amber)
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(7.dp))
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             EditableMeterPart(
                 label = tr("Numerador", "Numerator"),
@@ -2242,7 +2264,7 @@ private fun MeterConsoleModule(
             ) { numerator -> update { it.copy(numerator = numerator) } }
             Text(
                 "/",
-                modifier = Modifier.height(52.dp).wrapContentHeight(Alignment.CenterVertically),
+                modifier = Modifier.height(58.dp).wrapContentHeight(Alignment.CenterVertically),
                 color = TextMuted,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 22.sp,
@@ -2326,7 +2348,7 @@ private fun ConsoleNumericReadout(
     onDone: () -> Unit,
 ) {
     Surface(
-        modifier = modifier.height(52.dp),
+        modifier = modifier.height(58.dp),
         color = Bg,
         shape = RoundedCornerShape(7.dp),
         border = BorderStroke(1.dp, if (focused) accent else Border.copy(alpha = .85f)),
@@ -2410,7 +2432,7 @@ private fun EditableMeterPart(label: String, value: Int, enabled: Boolean, modif
             },
             onDone = { commit(); focusManager.clearFocus() },
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             MetronomeStepButton(R.drawable.ic_ui_remove, tr("Disminuir $label", "Decrease $label"), enabled, Modifier.weight(1f)) { step(-1) }
             MetronomeStepButton(R.drawable.ic_ui_add, tr("Aumentar $label", "Increase $label"), enabled, Modifier.weight(1f)) { step(1) }
@@ -2429,7 +2451,7 @@ private fun MetronomeStepButton(
     Surface(
         onClick = click,
         enabled = enabled,
-        modifier = modifier.height(32.dp).semantics { contentDescription = label; role = Role.Button },
+        modifier = modifier.height(38.dp).semantics { contentDescription = label; role = Role.Button },
         color = Panel,
         shape = RoundedCornerShape(6.dp),
         border = BorderStroke(1.dp, Border),
